@@ -98,3 +98,9 @@
 - [x] Cobrir o bloqueio de edição de conexão incompatível sem nova chave e validação em testes de contrato e interface.
 - [x] Adicionar teste de interface que verifica que a alteração de provedor, URL ou modelo exige nova chave e teste concluído antes de salvar.
 - [x] Renderizar o diálogo de edição revalidada em teste e confirmar mensagem, chave obrigatória e botão de salvar bloqueado antes do teste de conexão.
+- [x] Adicionar filtro no painel principal para mostrar apenas clientes com credenciais de IA inativas.
+- [x] Exibir um identificador mascarado da chave de API, limitado aos últimos quatro caracteres, com cópia controlada no fluxo de credenciais.
+- [x] Registrar e apresentar data e hora do último teste de conexão bem-sucedido por credencial.
+- [x] Documentar a arquitetura e o roteiro de profissionalização comercial da VERTEX Consulting para operação interna e modelo SaaS B2B.
+- [x] Derivar no servidor o identificador mascarado como os últimos quatro caracteres da chave em criações e edições de conexões.
+- [x] Cobrir em teste de contrato a máscara pública de quatro caracteres e a ausência completa da chave original nas respostas.

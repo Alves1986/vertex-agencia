@@ -495,6 +495,7 @@ export async function listClientAiConnections(userId: number, clientId?: number)
       defaultImageModel: clientAiConnections.defaultImageModel,
       keyHint: clientAiConnections.keyHint,
       status: clientAiConnections.status,
+      lastTestedAt: clientAiConnections.lastTestedAt,
       createdAt: clientAiConnections.createdAt,
       updatedAt: clientAiConnections.updatedAt,
     })
@@ -512,6 +513,7 @@ export async function createClientAiConnection(userId: number, input: {
   defaultImageModel?: string | null;
   encryptedApiKey?: string | null;
   keyHint?: string | null;
+  lastTestedAt?: Date | null;
 }) {
   const db = await requireDb();
   const ownedClient = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.id, input.clientId), eq(clients.createdByUserId, userId))).limit(1);
@@ -528,6 +530,7 @@ export async function updateClientAiConnection(userId: number, connectionId: num
   defaultImageModel?: string | null;
   encryptedApiKey?: string | null;
   keyHint?: string | null;
+  lastTestedAt?: Date | null;
 }) {
   const db = await requireDb();
   const rows = await db
@@ -558,6 +561,21 @@ export async function setClientAiConnectionStatus(userId: number, connectionId: 
   await db
     .update(clientAiConnections)
     .set({ status })
+    .where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId)));
+  return connectionId;
+}
+
+export async function recordClientAiConnectionTest(userId: number, connectionId: number, testedAt = new Date()) {
+  const db = await requireDb();
+  const rows = await db
+    .select({ id: clientAiConnections.id })
+    .from(clientAiConnections)
+    .where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId)))
+    .limit(1);
+  if (!rows[0]) throw new Error("Conexão de IA não encontrada");
+  await db
+    .update(clientAiConnections)
+    .set({ lastTestedAt: testedAt })
     .where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId)));
   return connectionId;
 }

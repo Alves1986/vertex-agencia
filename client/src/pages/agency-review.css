@@ -24,6 +24,11 @@
 .agency-provider-card-main > div:last-child { display: grid; gap: 2px; min-width: 0; }
 .agency-provider-card strong { color: #203d53; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agency-provider-card span, .agency-provider-card small { color: #708795; font-size: 10px; }
+.agency-key-hint { align-items: center; display: flex; flex-wrap: wrap; gap: 4px; }
+.agency-key-hint code { background: #edf3f5; border-radius: 4px; color: #416274; font-family: "Space Grotesk", sans-serif; font-size: 10px; padding: 2px 4px; }
+.agency-copy-key { align-items: center; background: transparent; border: 0; color: #2b6b78; cursor: pointer; display: inline-flex; font: inherit; font-size: 10px; font-weight: 800; gap: 3px; padding: 1px 2px; }
+.agency-copy-key:hover { color: #164e60; text-decoration: underline; }
+.agency-copy-key:active { transform: scale(.97); }
 .agency-provider-symbol { align-items: center; background: #e7f0f3; border-radius: 7px; color: #356273; display: flex; flex: 0 0 auto; height: 30px; justify-content: center; width: 30px; }
 .agency-provider-card-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
 .agency-provider-card-actions .ops-text-button { align-items: center; display: inline-flex; gap: 4px; }

@@ -1,5 +1,5 @@
 import React, { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
-import { Bot, BrainCircuit, CheckCircle2, ChevronRight, Clapperboard, FileText, KeyRound, Loader2, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, UploadCloud, WandSparkles, XCircle } from "lucide-react";
+import { Bot, BrainCircuit, CheckCircle2, ChevronRight, Clapperboard, Copy, FileText, KeyRound, Loader2, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, UploadCloud, WandSparkles, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StudioShell } from "@/components/StudioShell";
@@ -52,6 +52,11 @@ const emptyProvider = (): ProviderForm => ({ label: "", provider: "manus", model
 
 function providerLabel(provider: ProviderKind) {
   return providerCatalog.find(item => item.value === provider)?.label ?? provider;
+}
+
+export function formatLastConnectionTest(value?: Date | string | null) {
+  if (!value) return "Ainda não testada";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
 export default function Agency() {
@@ -169,7 +174,19 @@ export default function Agency() {
     setProviderTestState("idle");
     setProviderTestFingerprint("");
     setProviderVerificationToken("");
-    testProviderConnection.mutate({ provider: provider.provider, apiBaseUrl: provider.baseUrl || null, defaultModel: provider.model, apiKey: provider.provider === "manus" ? undefined : provider.apiKey });
+    testProviderConnection.mutate({ connectionId: editingConnectionId && !configurationChanged ? editingConnectionId : undefined, provider: provider.provider, apiBaseUrl: provider.baseUrl || null, defaultModel: provider.model, apiKey: provider.provider === "manus" ? undefined : provider.apiKey });
+  }
+  async function copyMaskedKey(keyHint?: string | null) {
+    if (!keyHint || keyHint === "integrado") {
+      toast.message("Esta conexão usa o Manus integrado e não possui chave externa para copiar.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(keyHint);
+      toast.success("Identificador mascarado copiado. A chave completa permanece protegida no servidor.");
+    } catch {
+      toast.error("Não foi possível copiar o identificador mascarado neste navegador.");
+    }
   }
   function openCampaignProviderDialog(target: CampaignProviderTarget, currentConnectionId: number | null | undefined, connection?: { status?: string | null } | null) {
     setCampaignProviderTarget(target);
@@ -230,7 +247,7 @@ export default function Agency() {
             <div className="agency-provider-summary"><ShieldCheck size={17} /><span>{(overview.data?.connections.filter(item => item.status === "active").length ?? 0)} conexão(ões) ativa(s)</span></div>
             <div className="agency-provider-list">
               {(overview.data?.connections ?? []).map(connection => <article className={`agency-provider-card ${connection.status === "disabled" ? "is-disabled" : ""}`} key={connection.id}>
-                <div className="agency-provider-card-main"><div className="agency-provider-symbol"><KeyRound size={15} /></div><div><strong>{connection.label}</strong><span>{providerLabel(connection.provider as ProviderKind)} · {connection.defaultModel}</span><small>Chave {connection.keyHint || "integrada"}{connection.apiBaseUrl ? " · URL personalizada" : ""}</small></div></div>
+                <div className="agency-provider-card-main"><div className="agency-provider-symbol"><KeyRound size={15} /></div><div><strong>{connection.label}</strong><span>{providerLabel(connection.provider as ProviderKind)} · {connection.defaultModel}</span><span className="agency-key-hint">Chave <code>{connection.keyHint || "integrada"}</code>{connection.keyHint && connection.keyHint !== "integrado" ? <button type="button" className="agency-copy-key" onClick={() => void copyMaskedKey(connection.keyHint)} aria-label={`Copiar identificador mascarado da conexão ${connection.label}`}><Copy size={12} /> Copiar</button> : null}{connection.apiBaseUrl ? " · URL personalizada" : ""}</span><small>Último teste bem-sucedido: {formatLastConnectionTest(connection.lastTestedAt)}</small></div></div>
                 <div className="agency-provider-card-actions"><span className={`agency-status-badge ${connection.status === "active" ? "is-active" : ""}`}>{connection.status === "active" ? "Ativa" : "Desativada"}</span><button className="ops-text-button" type="button" onClick={() => openProviderDialog(connection as Parameters<typeof openProviderDialog>[0])}><Pencil size={14} /> Editar</button><button className="ops-text-button" type="button" disabled={setProviderStatus.isPending} onClick={() => setProviderStatus.mutate({ connectionId: connection.id, status: connection.status === "active" ? "disabled" : "active" })}>{connection.status === "active" ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}{connection.status === "active" ? "Desativar" : "Reativar"}</button></div>
               </article>)}
               {!overview.isLoading && !overview.data?.connections.length ? <p className="ops-empty-copy">Nenhum provedor configurado. Adicione uma conexão para este cliente ou use o Manus integrado.</p> : null}

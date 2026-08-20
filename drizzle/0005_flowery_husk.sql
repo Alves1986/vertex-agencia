@@ -1,0 +1,1 @@
+ALTER TABLE `client_ai_connections` ADD `lastTestedAt` timestamp;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
 
 const mocks = vi.hoisted(() => ({
-  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), upsertClientAgencyProfile: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(),
+  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), upsertClientAgencyProfile: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(),
 }));
 
 vi.mock("../db", () => mocks);
@@ -59,7 +59,7 @@ describe("agency generation review contracts", () => {
   it("remove qualquer campo de segredo da resposta de conexões por cliente", async () => {
     mocks.getOperationalUserId.mockResolvedValue(7);
     mocks.getClientAgencyProfile.mockResolvedValue(null);
-    mocks.listClientAiConnections.mockResolvedValue([{ id: 4, clientId: 3, label: "OpenAI do cliente", provider: "openai", defaultModel: "gpt-5-mini", encryptedApiKey: "ciphertext", apiKey: "plain-key", secret: "internal-only" }]);
+    mocks.listClientAiConnections.mockResolvedValue([{ id: 4, clientId: 3, label: "OpenAI do cliente", provider: "openai", defaultModel: "gpt-5-mini", keyHint: "••••1234", encryptedApiKey: "ciphertext", apiKey: "sk-supersecret-1234", secret: "internal-only" }]);
     mocks.listAdCampaigns.mockResolvedValue([]);
     mocks.listAgencyBriefs.mockResolvedValue([]);
     mocks.listTrendSignals.mockResolvedValue([]);
@@ -69,9 +69,9 @@ describe("agency generation review contracts", () => {
     const caller = agencyRouter.createCaller(createContext());
     const overview = await caller.overview({ clientId: 3 });
 
-    expect(overview.connections).toEqual([{ id: 4, clientId: 3, label: "OpenAI do cliente", provider: "openai", defaultModel: "gpt-5-mini" }]);
+    expect(overview.connections).toEqual([{ id: 4, clientId: 3, label: "OpenAI do cliente", provider: "openai", defaultModel: "gpt-5-mini", keyHint: "••••1234" }]);
     expect(JSON.stringify(overview)).not.toContain("ciphertext");
-    expect(JSON.stringify(overview)).not.toContain("plain-key");
+    expect(JSON.stringify(overview)).not.toContain("sk-supersecret-1234");
     expect(JSON.stringify(overview)).not.toContain("internal-only");
   });
 
@@ -112,6 +112,19 @@ describe("agency generation review contracts", () => {
     expect(mocks.testAgencyConnection).toHaveBeenCalledWith(expect.objectContaining({ provider: "openai", apiKey: "sk-test-secret" }));
     expect(mocks.createClientAiConnection).not.toHaveBeenCalled();
     expect(mocks.updateAdCampaignProvider).toHaveBeenCalledWith(7, 11, 4);
+  });
+
+  it("registra a data do teste somente para a configuração salva da conexão", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.getClientAiConnection.mockResolvedValue({ id: 4, provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5-mini" });
+    mocks.testAgencyConnection.mockResolvedValue({ provider: "openai", message: "Conexão validada." });
+    mocks.issueConnectionVerification.mockReturnValue("proof-token");
+    const caller = agencyRouter.createCaller(createContext());
+
+    await expect(caller.testProviderConnection({ connectionId: 4, provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5-mini", apiKey: "sk-test-secret" })).resolves.toEqual({ provider: "openai", message: "Conexão validada.", verificationToken: "proof-token" });
+    expect(mocks.recordClientAiConnectionTest).toHaveBeenCalledWith(7, 4);
+    await expect(caller.testProviderConnection({ connectionId: 4, provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5", apiKey: "sk-test-secret" })).rejects.toThrow("Salve a nova configuração");
+    expect(mocks.recordClientAiConnectionTest).toHaveBeenCalledTimes(1);
   });
 
   it("bloqueia a troca de modelo em uma conexão existente sem uma nova chave validada", async () => {

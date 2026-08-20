@@ -36,6 +36,13 @@
       "when": 1787224759842,
       "tag": "0004_simple_zuras",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1787230495299,
+      "tag": "0005_flowery_husk",
+      "breakpoints": true
     }
   ]
 }

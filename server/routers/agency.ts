@@ -19,6 +19,7 @@ import {
   listAgencyBriefs,
   listClientAiConnections,
   listClientCredentialStatuses,
+  recordClientAiConnectionTest,
   listCreativeApprovals,
   listCreativeVersions,
   listStrategyDecisions,
@@ -87,7 +88,7 @@ export const agencyRouter = router({
     const userId = await getOperationalUserId(ctx.user);
     const apiKey = input.apiKey?.trim();
     if (input.provider !== "manus" && (!apiKey || !verifyConnectionVerification(userId, { provider: input.provider, apiBaseUrl: input.apiBaseUrl || null, defaultModel: input.defaultModel, apiKey }, input.verificationToken))) throw new Error("Teste a chave desta configuração antes de salvar.");
-    const id = await createClientAiConnection(userId, { ...input, encryptedApiKey: apiKey ? encryptProviderKey(apiKey) : null, keyHint: apiKey ? getKeyHint(apiKey) : "integrado" });
+    const id = await createClientAiConnection(userId, { ...input, encryptedApiKey: apiKey ? encryptProviderKey(apiKey) : null, keyHint: apiKey ? getKeyHint(apiKey) : "integrado", lastTestedAt: input.provider === "manus" || apiKey ? new Date() : null });
     return { id };
   }),
 
@@ -104,7 +105,7 @@ export const agencyRouter = router({
       apiBaseUrl: input.apiBaseUrl,
       defaultModel: input.defaultModel,
       defaultImageModel: input.defaultImageModel,
-      ...(apiKey ? { encryptedApiKey: encryptProviderKey(apiKey), keyHint: getKeyHint(apiKey) } : {}),
+      ...(apiKey ? { encryptedApiKey: encryptProviderKey(apiKey), keyHint: getKeyHint(apiKey), lastTestedAt: new Date() } : {}),
     });
     return { id };
   }),
@@ -114,9 +115,16 @@ export const agencyRouter = router({
     return { id: await setClientAiConnectionStatus(userId, input.connectionId, input.status) };
   }),
 
-  testProviderConnection: protectedProcedure.input(z.object({ provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), apiKey: z.string().trim().min(8).max(1200).optional() })).mutation(async ({ ctx, input }) => {
-    const result = await testAgencyConnection({ provider: input.provider, apiBaseUrl: input.apiBaseUrl || null, defaultModel: input.defaultModel, apiKey: input.apiKey });
+  testProviderConnection: protectedProcedure.input(z.object({ connectionId: z.number().int().positive().optional(), provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), apiKey: z.string().trim().min(8).max(1200).optional() })).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
+    if (input.connectionId) {
+      const connection = await getClientAiConnection(userId, input.connectionId);
+      if (!connection) throw new Error("Conexão não encontrada");
+      const configurationMatches = connection.provider === input.provider && (connection.apiBaseUrl || null) === (input.apiBaseUrl || null) && connection.defaultModel === input.defaultModel;
+      if (!configurationMatches) throw new Error("Salve a nova configuração após testá-la para registrar esta validação.");
+    }
+    const result = await testAgencyConnection({ provider: input.provider, apiBaseUrl: input.apiBaseUrl || null, defaultModel: input.defaultModel, apiKey: input.apiKey });
+    if (input.connectionId) await recordClientAiConnectionTest(userId, input.connectionId);
     return input.provider === "manus" || !input.apiKey ? result : { ...result, verificationToken: issueConnectionVerification(userId, { provider: input.provider, apiBaseUrl: input.apiBaseUrl || null, defaultModel: input.defaultModel, apiKey: input.apiKey }) };
   }),
 

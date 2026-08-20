@@ -15,7 +15,7 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-import { agencyModeOptions, getCampaignGenerationBlock, getConnectionRevalidationState, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
+import { agencyModeOptions, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
 
 describe("modos da Agência IA", () => {
   it("mantém fluxos integrados e separados para o mesmo briefing", () => {
@@ -40,6 +40,11 @@ describe("modos da Agência IA", () => {
     const original = "openai||gpt-5-mini";
     expect(getConnectionRevalidationState({ editing: true, originalConfiguration: original, provider: "openai", baseUrl: "", model: "gpt-5", apiKey: "" })).toMatchObject({ configurationChanged: true, requiresNewKey: true, requiresTest: true });
     expect(getConnectionRevalidationState({ editing: true, originalConfiguration: original, provider: "openai", baseUrl: "", model: "gpt-5-mini", apiKey: "" })).toMatchObject({ configurationChanged: false, requiresNewKey: false, requiresTest: false });
+  });
+
+  it("apresenta a auditoria de teste sem nunca derivar ou expor a chave original", () => {
+    expect(formatLastConnectionTest(null)).toBe("Ainda não testada");
+    expect(formatLastConnectionTest(new Date("2026-08-20T02:00:00.000Z"))).toMatch(/20\/08\/2026/);
   });
 
   it("renderiza a edição incompatível com nova chave, aviso de teste e salvamento bloqueado", () => {

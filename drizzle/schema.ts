@@ -238,6 +238,7 @@ export const clientAiConnections = mysqlTable(
     encryptedApiKey: text("encryptedApiKey"),
     keyHint: varchar("keyHint", { length: 16 }),
     status: mysqlEnum("status", ["active", "disabled"]).default("active").notNull(),
+    lastTestedAt: timestamp("lastTestedAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
