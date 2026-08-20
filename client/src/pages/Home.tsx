@@ -1,14 +1,21 @@
 import { NewProjectLink, StudioShell, formatDate, projectStatusLabel } from "@/components/StudioShell";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, CalendarDays, CheckCircle2, CircleDot, FolderKanban, KeyRound, ListChecks, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowRight, CalendarDays, CheckCircle2, CircleDot, FolderKanban, Gauge, KeyRound, ListChecks, Loader2, ShieldAlert, ShieldCheck } from "lucide-react";
+import React, { useMemo, useState } from "react";
 import { Link } from "wouter";
 import "./home-credentials.css";
 
 export type CredentialStatusRow = { id: number; name: string; activeCount: number; disabledCount: number; status: "active" | "disabled" | "missing" };
+export type ApiUsageRow = { id: number; name: string; requestCount: number; successfulCount: number; failedCount: number; inputTokens: number; outputTokens: number; totalTokens: number; averageDurationMs: number | null; telemetryAvailable: boolean; costStatus: "unavailable"; lastUsedAt: Date | null };
 
 export function filterCredentialStatuses(rows: CredentialStatusRow[], filter: "all" | "inactive") {
   return filter === "all" ? rows : rows.filter(client => client.status === "disabled");
+}
+
+export function describeApiUsage(row: ApiUsageRow) {
+  if (!row.requestCount) return "Sem chamadas registradas";
+  if (!row.telemetryAvailable) return `${row.requestCount} chamada${row.requestCount === 1 ? "" : "s"} registrada${row.requestCount === 1 ? "" : "s"}; o provedor ainda não reportou tokens.`;
+  return `${row.successfulCount} geração(ões) concluída(s) · ${formatNumber(row.totalTokens)} tokens reportados`;
 }
 
 export default function Home() {
@@ -19,6 +26,7 @@ export default function Home() {
   const tasks = trpc.production.tasks.useQuery(filters);
   const agenda = trpc.production.agenda.useQuery();
   const credentialStatuses = trpc.agency.credentialStatuses.useQuery();
+  const apiUsage = trpc.agency.usageByClient.useQuery();
   const activeProjects = (projects.data ?? []).filter(row => !["completed", "on_hold"].includes(row.project.status));
   const attention = (tasks.data ?? []).filter(row => ["blocked", "review"].includes(row.task.status));
   const doneTasks = (tasks.data ?? []).filter(row => row.task.status === "done");
@@ -47,6 +55,7 @@ export default function Home() {
         </div>
       </section>
       <section className="ops-panel ops-credential-panel" aria-label="Status de credenciais de IA por cliente"><div className="ops-panel-heading"><div><p className="ops-section-kicker">Prontidão de IA</p><h2>Credenciais por cliente</h2></div><KeyRound size={20} /></div><div className="ops-credential-toolbar"><p className="ops-credential-intro">Veja quem já pode gerar com um provedor configurado e onde ainda é preciso agir.</p><div className="ops-credential-filter" aria-label="Filtro de credenciais"><button className={credentialFilter === "all" ? "is-selected" : ""} type="button" onClick={() => setCredentialFilter("all")}>Todos</button><button className={credentialFilter === "inactive" ? "is-selected" : ""} type="button" onClick={() => setCredentialFilter("inactive")}>Inativas{inactiveCredentialCount ? ` (${inactiveCredentialCount})` : ""}</button></div></div>{credentialStatuses.isLoading ? <div className="ops-page-loading"><Loader2 size={18} /> Lendo status de conexões…</div> : <div className="ops-credential-list">{credentialRows.map(client => { const isActive = client.status === "active"; const isDisabled = client.status === "disabled"; const label = isActive ? `${client.activeCount} ativa${client.activeCount === 1 ? "" : "s"}` : isDisabled ? "Inativa" : "Sem credencial"; return <Link key={client.id} href="/agencia" className={`ops-credential-row is-${client.status}`}><span className="ops-credential-icon">{isActive ? <ShieldCheck size={17} /> : <ShieldAlert size={17} />}</span><span className="ops-credential-client"><strong>{client.name}</strong><small>{isActive ? `${client.disabledCount ? `${client.disabledCount} desativada(s) em histórico.` : "Pronto para escolher o provedor."}` : isDisabled ? `${client.disabledCount} conexão(ões) aguardando reativação.` : "Configure uma conexão para começar."}</small></span><b>{label}</b></Link>; })}{credentialFilter === "inactive" && !credentialRows.length ? <div className="ops-empty"><p>Nenhum cliente possui apenas credenciais inativas neste momento.</p><button type="button" className="ops-text-button" onClick={() => setCredentialFilter("all")}>Ver todos os clientes</button></div> : null}{!(credentialStatuses.data?.length) ? <div className="ops-empty"><p>Os clientes cadastrados aparecerão aqui com o estado de suas credenciais de IA.</p><Link href="/agencia" className="ops-text-link">Abrir Agência IA <ArrowRight size={15} /></Link></div> : null}</div>}</section>
+      <ApiUsagePanel rows={apiUsage.data} loading={apiUsage.isLoading} />
       <section className="ops-focus-strip"><ListChecks size={22} /><div><strong>Produção sem ruído</strong><span>{attention.length ? `${attention.length} item(ns) precisam de decisão.` : "Nenhum bloqueio ou revisão pendente nos filtros atuais."}</span></div><Link href="/producao">Abrir produção <ArrowRight size={16} /></Link></section>
     </div>
   </StudioShell>;
@@ -54,4 +63,12 @@ export default function Home() {
 
 function Empty({ message, action, href }: { message: string; action: string; href: string }) {
   return <div className="ops-empty"><p>{message}</p><Link href={href} className="ops-text-link">{action} <ArrowRight size={15} /></Link></div>;
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("pt-BR").format(value);
+}
+
+export function ApiUsagePanel({ rows, loading }: { rows: ApiUsageRow[] | undefined; loading: boolean }) {
+  return <section className="ops-panel ops-usage-panel" aria-label="Consumo de API por cliente"><div className="ops-panel-heading"><div><p className="ops-section-kicker">Uso de IA</p><h2>Consumo por cliente</h2></div><Gauge size={20} /></div><p className="ops-credential-intro">Chamadas e tokens são apurados nas gerações registradas. Custos só aparecem quando um provedor os informar oficialmente.</p>{loading ? <div className="ops-page-loading"><Loader2 size={18} /> Consolidando consumo…</div> : <div className="ops-usage-list">{(rows ?? []).map(client => <article className="ops-usage-row" key={client.id}><div className="ops-usage-main"><strong>{client.name}</strong><small>{describeApiUsage(client)}</small></div><div className="ops-usage-metrics"><span><b>{client.requestCount}</b> chamadas</span><span><b>{client.successfulCount}</b> gerações</span><span><b>{client.telemetryAvailable ? formatNumber(client.totalTokens) : "—"}</b> tokens</span></div><div className="ops-usage-audit"><small>{client.lastUsedAt ? `Último uso: ${formatDate(client.lastUsedAt, true)}` : "Ainda sem uso"}</small><small>{client.averageDurationMs != null ? `${(client.averageDurationMs / 1000).toFixed(1)} s em média` : "Tempo indisponível"}</small><em>Custo indisponível</em></div></article>)}{!(rows?.length) ? <div className="ops-empty"><p>Os clientes aparecerão aqui assim que forem cadastrados. As métricas serão preenchidas a cada geração.</p><Link href="/agencia" className="ops-text-link">Abrir Agência IA <ArrowRight size={15} /></Link></div> : null}</div>}</section>;
 }

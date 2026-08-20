@@ -11,6 +11,12 @@ export type AgencyOutput = {
   council?: { lenses: Array<{ lens: string; assessment: string }>; recommendation: string; primaryRisk: string };
 };
 
+export type ProviderUsage = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+};
+
 type Connection = {
   provider: "manus" | "openai" | "openai_compatible" | "gemini" | "anthropic";
   defaultModel: string;
@@ -39,10 +45,20 @@ function parseOutput(text: string): AgencyOutput {
   return value;
 }
 
-async function callJson(url: string, init: RequestInit, read: (payload: any) => string) {
+export function extractProviderUsage(provider: Connection["provider"] | "manus", payload: any): ProviderUsage | null {
+  const usage = provider === "gemini" ? payload?.usageMetadata : payload?.usage;
+  if (!usage) return null;
+  const inputTokens = provider === "gemini" ? usage.promptTokenCount : usage.input_tokens ?? usage.prompt_tokens ?? null;
+  const outputTokens = provider === "gemini" ? usage.candidatesTokenCount : usage.output_tokens ?? usage.completion_tokens ?? null;
+  const totalTokens = provider === "gemini" ? usage.totalTokenCount : usage.total_tokens ?? ((inputTokens ?? 0) + (outputTokens ?? 0) || null);
+  return inputTokens == null && outputTokens == null && totalTokens == null ? null : { inputTokens: inputTokens ?? null, outputTokens: outputTokens ?? null, totalTokens: totalTokens ?? null };
+}
+
+async function callJson(url: string, init: RequestInit, read: (payload: any) => string, provider: Connection["provider"]) {
   const response = await fetch(url, init);
   if (!response.ok) throw new Error(`O provedor recusou a geração (${response.status})`);
-  return parseOutput(read(await response.json()));
+  const payload = await response.json();
+  return { output: parseOutput(read(payload)), usage: extractProviderUsage(provider, payload) };
 }
 
 async function probeProvider(url: string, init: RequestInit) {
@@ -80,28 +96,28 @@ export async function testAgencyConnection(connection: ConnectionProbe): Promise
   return { provider: connection.provider, message: "Conexão validada. A chave pode ser protegida para este cliente." };
 }
 
-export async function generateAgencyOutput(connection: Connection | null, prompt: string): Promise<{ output: AgencyOutput; provider: string; model: string }> {
+export async function generateAgencyOutput(connection: Connection | null, prompt: string): Promise<{ output: AgencyOutput; provider: string; model: string; usage: ProviderUsage | null }> {
   if (!connection || connection.provider === "manus") {
     const model = connection?.defaultModel || "gpt-5-mini";
     const result = await invokeLLM({ model, responseFormat: { type: "json_object" }, maxTokens: 4000, messages: [{ role: "system", content: "Você entrega JSON válido, sem markdown." }, { role: "user", content: prompt }] });
     const content = result.choices[0]?.message.content;
     if (typeof content !== "string") throw new Error("O provedor interno não retornou texto");
-    return { output: parseOutput(content), provider: "manus", model };
+    return { output: parseOutput(content), provider: "manus", model, usage: extractProviderUsage("manus", result) };
   }
   if (!connection.encryptedApiKey) throw new Error("Este provedor exige uma chave de API válida para o cliente");
   const apiKey = decryptProviderKey(connection.encryptedApiKey);
   const model = connection.defaultModel;
   if (connection.provider === "gemini") {
     const base = (connection.apiBaseUrl || "https://generativelanguage.googleapis.com/v1beta").replace(/\/$/, "");
-    const output = await callJson(`${base}/models/${encodeURIComponent(model)}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey }, body: JSON.stringify({ systemInstruction: { parts: [{ text: "Você entrega JSON válido, sem markdown." }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } }) }, payload => payload.candidates?.[0]?.content?.parts?.[0]?.text || "");
-    return { output, provider: connection.provider, model };
+    const response = await callJson(`${base}/models/${encodeURIComponent(model)}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey }, body: JSON.stringify({ systemInstruction: { parts: [{ text: "Você entrega JSON válido, sem markdown." }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } }) }, payload => payload.candidates?.[0]?.content?.parts?.[0]?.text || "", "gemini");
+    return { ...response, provider: connection.provider, model };
   }
   if (connection.provider === "anthropic") {
     const base = (connection.apiBaseUrl || "https://api.anthropic.com/v1").replace(/\/$/, "");
-    const output = await callJson(`${base}/messages`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }, body: JSON.stringify({ model, max_tokens: 4000, system: "Você entrega JSON válido, sem markdown.", messages: [{ role: "user", content: prompt }] }) }, payload => payload.content?.[0]?.text || "");
-    return { output, provider: connection.provider, model };
+    const response = await callJson(`${base}/messages`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }, body: JSON.stringify({ model, max_tokens: 4000, system: "Você entrega JSON válido, sem markdown.", messages: [{ role: "user", content: prompt }] }) }, payload => payload.content?.[0]?.text || "", "anthropic");
+    return { ...response, provider: connection.provider, model };
   }
   const base = (connection.apiBaseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
-  const output = await callJson(`${base}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model, response_format: { type: "json_object" }, messages: [{ role: "system", content: "Você entrega JSON válido, sem markdown." }, { role: "user", content: prompt }] }) }, payload => payload.choices?.[0]?.message?.content || "");
-  return { output, provider: connection.provider, model };
+  const response = await callJson(`${base}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model, response_format: { type: "json_object" }, messages: [{ role: "system", content: "Você entrega JSON válido, sem markdown." }, { role: "user", content: prompt }] }) }, payload => payload.choices?.[0]?.message?.content || "", connection.provider);
+  return { ...response, provider: connection.provider, model };
 }

@@ -694,9 +694,28 @@ export async function createAiGeneration(userId: number, input: {
   return created.id;
 }
 
-export async function completeAiGeneration(userId: number, generationId: number, input: { status: GenerationStatus; outputJson?: string | null; errorMessage?: string | null }) {
+export async function completeAiGeneration(userId: number, generationId: number, input: { status: GenerationStatus; outputJson?: string | null; errorMessage?: string | null; inputTokens?: number | null; outputTokens?: number | null; totalTokens?: number | null; requestDurationMs?: number | null }) {
   const db = await requireDb();
   await db.update(aiGenerations).set({ ...input, completedAt: new Date() }).where(and(eq(aiGenerations.id, generationId), eq(aiGenerations.ownerUserId, userId)));
+}
+
+export async function listClientApiUsage(userId: number) {
+  const db = await requireDb();
+  const [ownedClients, generations] = await Promise.all([
+    db.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.createdByUserId, userId)).orderBy(asc(clients.name)),
+    db.select({ clientId: adCampaigns.clientId, id: aiGenerations.id, status: aiGenerations.status, provider: aiGenerations.provider, model: aiGenerations.model, inputTokens: aiGenerations.inputTokens, outputTokens: aiGenerations.outputTokens, totalTokens: aiGenerations.totalTokens, requestDurationMs: aiGenerations.requestDurationMs, createdAt: aiGenerations.createdAt, completedAt: aiGenerations.completedAt }).from(aiGenerations).innerJoin(adCampaigns, eq(aiGenerations.campaignId, adCampaigns.id)).where(eq(aiGenerations.ownerUserId, userId)),
+  ]);
+  return ownedClients.map(client => {
+    const related = generations.filter(generation => generation.clientId === client.id);
+    const succeeded = related.filter(generation => generation.status === "succeeded");
+    const withTelemetry = related.filter(generation => generation.totalTokens != null || generation.inputTokens != null || generation.outputTokens != null);
+    const sum = (field: "inputTokens" | "outputTokens" | "totalTokens" | "requestDurationMs") => related.reduce((total, generation) => total + (generation[field] ?? 0), 0);
+    const lastUse = related.reduce<Date | null>((latest, generation) => {
+      const candidate = generation.completedAt || generation.createdAt;
+      return !latest || candidate > latest ? candidate : latest;
+    }, null);
+    return { id: client.id, name: client.name, requestCount: related.length, successfulCount: succeeded.length, failedCount: related.filter(generation => generation.status === "failed").length, inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens"), totalTokens: sum("totalTokens"), averageDurationMs: related.length ? Math.round(sum("requestDurationMs") / related.length) : null, telemetryAvailable: withTelemetry.length > 0, costStatus: "unavailable" as const, lastUsedAt: lastUse };
+  });
 }
 
 export async function createCreativeVersion(userId: number, input: {

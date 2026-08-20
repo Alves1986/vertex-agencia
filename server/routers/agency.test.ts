@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
 
 const mocks = vi.hoisted(() => ({
-  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), upsertClientAgencyProfile: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(),
+  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listClientApiUsage: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), upsertClientAgencyProfile: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(),
 }));
 
 vi.mock("../db", () => mocks);
@@ -142,5 +142,13 @@ describe("agency generation review contracts", () => {
     const caller = agencyRouter.createCaller(createContext());
     await expect(caller.credentialStatuses()).resolves.toEqual([{ id: 3, name: "Globo Acabamentos", activeCount: 1, disabledCount: 0, status: "active" }]);
     expect(JSON.stringify(mocks.listClientCredentialStatuses.mock.results)).not.toContain("encryptedApiKey");
+  });
+
+  it("expõe o consumo de cada cliente sem inventar custo quando não há telemetria oficial", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.listClientApiUsage.mockResolvedValue([{ id: 3, name: "Globo Acabamentos", requestCount: 2, successfulCount: 1, failedCount: 1, inputTokens: 18, outputTokens: 12, totalTokens: 30, averageDurationMs: 840, telemetryAvailable: true, costStatus: "unavailable", lastUsedAt: new Date("2026-08-20T12:00:00Z") }]);
+    const caller = agencyRouter.createCaller(createContext());
+    await expect(caller.usageByClient()).resolves.toMatchObject([{ id: 3, totalTokens: 30, costStatus: "unavailable" }]);
+    expect(mocks.listClientApiUsage).toHaveBeenCalledWith(7);
   });
 });

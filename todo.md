@@ -104,3 +104,7 @@
 - [x] Documentar a arquitetura e o roteiro de profissionalização comercial da VERTEX Consulting para operação interna e modelo SaaS B2B.
 - [x] Derivar no servidor o identificador mascarado como os últimos quatro caracteres da chave em criações e edições de conexões.
 - [x] Cobrir em teste de contrato a máscara pública de quatro caracteres e a ausência completa da chave original nas respostas.
+- [x] Adicionar ao painel principal uma seção por cliente com consumo e uso de API registrados, separando chamadas, gerações e custos efetivamente disponíveis.
+- [x] Persistir métricas de consumo retornadas por provedores quando disponíveis, sem estimar custo em ausência de dados oficiais.
+- [x] Cobrir os indicadores de consumo por cliente em contrato e interface, incluindo estado vazio sem telemetria disponível.
+- [x] Renderizar a seção de consumo no painel principal em teste de interface, cobrindo o estado vazio e o caso sem tokens ou custo informado.

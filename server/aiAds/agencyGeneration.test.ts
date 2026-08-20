@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildAgencyPrompt, testAgencyConnection } from "./agencyGeneration";
+import { buildAgencyPrompt, extractProviderUsage, testAgencyConnection } from "./agencyGeneration";
 
 describe("buildAgencyPrompt", () => {
   it("preserva lacunas de evidência e evita instruções de carrossel composto", () => {
@@ -7,6 +7,14 @@ describe("buildAgencyPrompt", () => {
     expect(prompt).toContain("nunca invente fatos");
     expect(prompt).toContain("cada slide é uma arte vertical independente");
     expect(prompt).toContain("Globo Acabamentos");
+  });
+});
+
+describe("extractProviderUsage", () => {
+  it("preserva somente métricas realmente retornadas pelo provedor", () => {
+    expect(extractProviderUsage("openai", { usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } })).toEqual({ inputTokens: 12, outputTokens: 8, totalTokens: 20 });
+    expect(extractProviderUsage("gemini", { usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 } })).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
+    expect(extractProviderUsage("anthropic", {})).toBeNull();
   });
 });
 

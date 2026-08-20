@@ -19,6 +19,7 @@ import {
   listAgencyBriefs,
   listClientAiConnections,
   listClientCredentialStatuses,
+  listClientApiUsage,
   recordClientAiConnectionTest,
   listCreativeApprovals,
   listCreativeVersions,
@@ -76,6 +77,11 @@ export const agencyRouter = router({
   credentialStatuses: protectedProcedure.query(async ({ ctx }) => {
     const userId = await getOperationalUserId(ctx.user);
     return listClientCredentialStatuses(userId);
+  }),
+
+  usageByClient: protectedProcedure.query(async ({ ctx }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return listClientApiUsage(userId);
   }),
 
   saveProfile: protectedProcedure.input(profileSchema).mutation(async ({ ctx, input }) => {
@@ -179,10 +185,11 @@ export const agencyRouter = router({
     const prompt = buildAgencyPrompt({ mode: input.mode, clientName: record.client.name, campaignName: record.campaign.name, objective: record.campaign.objective, briefing, profile });
     await updateAdCampaignStatus(userId, input.campaignId, "generating");
     const generationId = await createAiGeneration(userId, { campaignId: input.campaignId, kind: input.mode === "carousel" ? "carousel" : input.mode === "ads" ? "ads" : "bundle", provider: connection?.provider || "manus", model: connection?.defaultModel || "gpt-5-mini", promptSnapshot: prompt });
+    const generationStartedAt = Date.now();
     try {
       const result = await generateAgencyOutput(connection, prompt);
       const outputJson = JSON.stringify(result.output);
-      await completeAiGeneration(userId, generationId, { status: "succeeded", outputJson });
+      await completeAiGeneration(userId, generationId, { status: "succeeded", outputJson, inputTokens: result.usage?.inputTokens ?? null, outputTokens: result.usage?.outputTokens ?? null, totalTokens: result.usage?.totalTokens ?? null, requestDurationMs: Date.now() - generationStartedAt });
       const versionId = await createCreativeVersion(userId, { campaignId: input.campaignId, generationId, kind: toCreativeKind(input.mode), summary: `${input.mode} · ${record.campaign.name}`, payloadJson: outputJson });
       if (result.output.carousel?.length) await replaceCarouselSlides(userId, input.campaignId, generationId, result.output.carousel);
       if (result.output.video) await createVideoScript(userId, { clientId: record.campaign.clientId, campaignId: input.campaignId, title: result.output.video.title, scriptJson: JSON.stringify(result.output.video.scenes), editPlan: result.output.video.editPlan });
@@ -191,7 +198,7 @@ export const agencyRouter = router({
       return { generationId, versionId, output: result.output, provider: result.provider, model: result.model };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao gerar";
-      await completeAiGeneration(userId, generationId, { status: "failed", errorMessage: message });
+      await completeAiGeneration(userId, generationId, { status: "failed", errorMessage: message, requestDurationMs: Date.now() - generationStartedAt });
       await updateAdCampaignStatus(userId, input.campaignId, "failed");
       throw new Error(message);
     }
