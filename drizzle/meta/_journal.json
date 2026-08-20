@@ -50,6 +50,13 @@
       "when": 1787231548814,
       "tag": "0006_grey_iron_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787232565727,
+      "tag": "0007_bouncy_zaladane",
+      "breakpoints": true
     }
   ]
 }

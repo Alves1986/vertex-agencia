@@ -30,6 +30,7 @@ export const clients = mysqlTable(
     contactEmail: varchar("contactEmail", { length: 320 }),
     segment: varchar("segment", { length: 120 }),
     status: mysqlEnum("status", ["active", "paused", "archived"]).default("active").notNull(),
+    monthlyApiCallLimit: int("monthlyApiCallLimit"),
     createdByUserId: int("createdByUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

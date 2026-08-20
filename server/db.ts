@@ -606,6 +606,16 @@ export async function listClientCredentialStatuses(userId: number) {
   });
 }
 
+export async function updateClientMonthlyApiCallLimit(userId: number, clientId: number, monthlyApiCallLimit: number | null) {
+  const db = await requireDb();
+  const result = await db
+    .update(clients)
+    .set({ monthlyApiCallLimit })
+    .where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId)));
+  if (!result[0].affectedRows) throw new Error("Cliente não encontrado neste espaço de trabalho");
+  return clientId;
+}
+
 export async function listAdCampaigns(userId: number, clientId?: number) {
   const db = await requireDb();
   const conditions = [eq(adCampaigns.ownerUserId, userId)];
@@ -699,14 +709,23 @@ export async function completeAiGeneration(userId: number, generationId: number,
   await db.update(aiGenerations).set({ ...input, completedAt: new Date() }).where(and(eq(aiGenerations.id, generationId), eq(aiGenerations.ownerUserId, userId)));
 }
 
-export async function listClientApiUsage(userId: number) {
+export function getCurrentMonthStart(referenceDate = new Date()) {
+  return new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+}
+
+export async function listClientApiUsage(userId: number, periodDays = 30) {
   const db = await requireDb();
+  const periodStart = new Date();
+  periodStart.setDate(periodStart.getDate() - periodDays);
+  const monthStart = getCurrentMonthStart();
   const [ownedClients, generations] = await Promise.all([
-    db.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.createdByUserId, userId)).orderBy(asc(clients.name)),
-    db.select({ clientId: adCampaigns.clientId, id: aiGenerations.id, status: aiGenerations.status, provider: aiGenerations.provider, model: aiGenerations.model, inputTokens: aiGenerations.inputTokens, outputTokens: aiGenerations.outputTokens, totalTokens: aiGenerations.totalTokens, requestDurationMs: aiGenerations.requestDurationMs, createdAt: aiGenerations.createdAt, completedAt: aiGenerations.completedAt }).from(aiGenerations).innerJoin(adCampaigns, eq(aiGenerations.campaignId, adCampaigns.id)).where(eq(aiGenerations.ownerUserId, userId)),
+    db.select({ id: clients.id, name: clients.name, monthlyApiCallLimit: clients.monthlyApiCallLimit }).from(clients).where(eq(clients.createdByUserId, userId)).orderBy(asc(clients.name)),
+    db.select({ clientId: adCampaigns.clientId, id: aiGenerations.id, status: aiGenerations.status, provider: aiGenerations.provider, model: aiGenerations.model, inputTokens: aiGenerations.inputTokens, outputTokens: aiGenerations.outputTokens, totalTokens: aiGenerations.totalTokens, requestDurationMs: aiGenerations.requestDurationMs, createdAt: aiGenerations.createdAt, completedAt: aiGenerations.completedAt }).from(aiGenerations).innerJoin(adCampaigns, eq(aiGenerations.campaignId, adCampaigns.id)).where(and(eq(aiGenerations.ownerUserId, userId), gte(aiGenerations.createdAt, periodStart))),
   ]);
+  const monthlyGenerations = await db.select({ clientId: adCampaigns.clientId, id: aiGenerations.id }).from(aiGenerations).innerJoin(adCampaigns, eq(aiGenerations.campaignId, adCampaigns.id)).where(and(eq(aiGenerations.ownerUserId, userId), gte(aiGenerations.createdAt, monthStart)));
   return ownedClients.map(client => {
     const related = generations.filter(generation => generation.clientId === client.id);
+    const monthlyRequestCount = monthlyGenerations.filter(generation => generation.clientId === client.id).length;
     const succeeded = related.filter(generation => generation.status === "succeeded");
     const withTelemetry = related.filter(generation => generation.totalTokens != null || generation.inputTokens != null || generation.outputTokens != null);
     const sum = (field: "inputTokens" | "outputTokens" | "totalTokens" | "requestDurationMs") => related.reduce((total, generation) => total + (generation[field] ?? 0), 0);
@@ -714,7 +733,10 @@ export async function listClientApiUsage(userId: number) {
       const candidate = generation.completedAt || generation.createdAt;
       return !latest || candidate > latest ? candidate : latest;
     }, null);
-    return { id: client.id, name: client.name, requestCount: related.length, successfulCount: succeeded.length, failedCount: related.filter(generation => generation.status === "failed").length, inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens"), totalTokens: sum("totalTokens"), averageDurationMs: related.length ? Math.round(sum("requestDurationMs") / related.length) : null, telemetryAvailable: withTelemetry.length > 0, costStatus: "unavailable" as const, lastUsedAt: lastUse };
+    const limit = client.monthlyApiCallLimit;
+    const utilizationPercent = limit ? Math.round((monthlyRequestCount / limit) * 100) : null;
+    const limitStatus = !limit ? "not_configured" as const : monthlyRequestCount > limit ? "exceeded" as const : monthlyRequestCount === limit ? "reached" as const : utilizationPercent !== null && utilizationPercent >= 80 ? "near" as const : "within" as const;
+    return { id: client.id, name: client.name, requestCount: related.length, successfulCount: succeeded.length, failedCount: related.filter(generation => generation.status === "failed").length, inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens"), totalTokens: sum("totalTokens"), averageDurationMs: related.length ? Math.round(sum("requestDurationMs") / related.length) : null, telemetryAvailable: withTelemetry.length > 0, costStatus: "unavailable" as const, lastUsedAt: lastUse, periodDays, monthlyApiCallLimit: limit, monthlyRequestCount, utilizationPercent, limitStatus };
   });
 }
 

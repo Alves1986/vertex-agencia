@@ -108,3 +108,20 @@
 - [x] Persistir métricas de consumo retornadas por provedores quando disponíveis, sem estimar custo em ausência de dados oficiais.
 - [x] Cobrir os indicadores de consumo por cliente em contrato e interface, incluindo estado vazio sem telemetria disponível.
 - [x] Renderizar a seção de consumo no painel principal em teste de interface, cobrindo o estado vazio e o caso sem tokens ou custo informado.
+- [x] Permitir definir e exibir um limite mensal de chamadas de API para cada cliente cadastrado.
+- [x] Destacar visualmente o consumo próximo, atingido ou acima do limite mensal, sem alertar clientes sem limite configurado.
+- [x] Adicionar filtro de período de 7, 15 e 30 dias à seção de consumo de API por cliente.
+- [x] Cobrir em contrato e interface os limites, alertas proporcionais e filtros temporais de consumo.
+- [x] Exportar e integrar corretamente a atualização protegida do limite mensal no acesso ao banco e no roteador.
+- [x] Validar em execução a leitura, gravação e remoção de limite, os alertas e os filtros de 7, 15 e 30 dias.
+- [x] Executar testes, checagem de tipos e build sem erro de módulo antes de salvar a entrega.
+- [x] Desabilitar a ação de remoção quando não houver limite mensal configurado e orientar a definição de um valor válido.
+- [x] Validar com dados reais o fluxo completo de limite mensal: criar, atualizar, remover e confirmar o reflexo persistido no painel.
+- [x] Executar pelo painel as transições de criar, atualizar e remover limite para Globo Acabamentos, registrando cada estado exibido pelo contrato tRPC que alimenta a interface.
+- [x] Consolidar no repositório as capturas autenticadas e a documentação final das transições de limite e dos três filtros temporais.
+- [x] Registrar evidência de contrato dos filtros de 7, 15 e 30 dias aplicados ao consumo por cliente.
+- [x] Exibir e testar uma orientação explícita para inserir um valor mensal válido ao configurar o limite.
+- [x] Confirmar em teste os períodos de 7, 15 e 30 dias encaminhados ao contrato de consumo.
+- [x] Confirmar em teste a orientação de valor mensal válido e a faixa exibida no controle.
+- [x] Garantir que o contador mensal do limite use o mês-calendário corrente para todos os filtros de período.
+- [x] Cobrir no contrato a remoção explícita do limite mensal por valor nulo.

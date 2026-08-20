@@ -31,6 +31,7 @@ import {
   updateAdCampaignStatus,
   updateAdCampaignProvider,
   updateClientAiConnection,
+  updateClientMonthlyApiCallLimit,
   upsertClientAgencyProfile,
 } from "../db";
 import { encryptProviderKey, getKeyHint } from "../aiAds/crypto";
@@ -79,9 +80,14 @@ export const agencyRouter = router({
     return listClientCredentialStatuses(userId);
   }),
 
-  usageByClient: protectedProcedure.query(async ({ ctx }) => {
+  usageByClient: protectedProcedure.input(z.object({ periodDays: z.union([z.literal(7), z.literal(15), z.literal(30)]).default(30) }).default({ periodDays: 30 })).query(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
-    return listClientApiUsage(userId);
+    return listClientApiUsage(userId, input.periodDays);
+  }),
+
+  setMonthlyApiLimit: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), monthlyApiCallLimit: z.number().int().min(1).max(10_000_000).nullable() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return updateClientMonthlyApiCallLimit(userId, input.clientId, input.monthlyApiCallLimit);
   }),
 
   saveProfile: protectedProcedure.input(profileSchema).mutation(async ({ ctx, input }) => {
