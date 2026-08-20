@@ -8,6 +8,10 @@
 .agency-approve-action { min-height: 34px; padding: 0 10px; }
 .agency-reject-action { color: #ae4a42; }
 .agency-publish-action { align-items: center; display: inline-flex; gap: 6px; min-height: 34px; padding: 0 11px; }
+.agency-connection-test { align-items: center; background: #f5f9fa; border: 1px dashed #c9d9df; border-radius: 10px; color: #637f8d; display: flex; font-size: 11px; gap: 10px; margin-top: 13px; padding: 10px; }
+.agency-connection-test .ops-outline-button { min-height: 32px; padding: 0 10px; }
+.agency-connection-test.is-passed { background: #eff9f3; border-color: #a9d8bc; color: #28724f; }
+.agency-connection-test.is-failed { background: #fff6ed; border-color: #edc49d; color: #a86427; }
 .agency-list-row-blocked { background: #fff7ef; border-left: 3px solid #e78c48; margin-left: -10px; padding-left: 10px; }
 .agency-list-row-blocked small { color: #a85e27; line-height: 1.45; }
 .agency-provider-manager { align-content: start; display: grid; gap: 12px; }

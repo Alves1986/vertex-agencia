@@ -13,10 +13,12 @@ import {
   createVideoScript,
   getAdCampaign,
   getClientAgencyProfile,
+  getClientAiConnection,
   getClientAiConnectionSecret,
   listAdCampaigns,
   listAgencyBriefs,
   listClientAiConnections,
+  listClientCredentialStatuses,
   listCreativeApprovals,
   listCreativeVersions,
   listStrategyDecisions,
@@ -25,11 +27,13 @@ import {
   replaceCarouselSlides,
   setClientAiConnectionStatus,
   updateAdCampaignStatus,
+  updateAdCampaignProvider,
   updateClientAiConnection,
   upsertClientAgencyProfile,
 } from "../db";
 import { encryptProviderKey, getKeyHint } from "../aiAds/crypto";
-import { buildAgencyPrompt, generateAgencyOutput, type AgencyGenerationMode } from "../aiAds/agencyGeneration";
+import { buildAgencyPrompt, generateAgencyOutput, testAgencyConnection, type AgencyGenerationMode } from "../aiAds/agencyGeneration";
+import { issueConnectionVerification, verifyConnectionVerification } from "../aiAds/connectionVerification";
 import { getOperationalUserId } from "./helpers";
 
 const providerSchema = z.enum(["manus", "openai", "openai_compatible", "gemini", "anthropic"]);
@@ -68,22 +72,32 @@ export const agencyRouter = router({
     return { profile, connections: connections.map(toPublicConnection), campaigns: campaigns.map(toPublicCampaign), briefs, trends, videos, decisions };
   }),
 
+  credentialStatuses: protectedProcedure.query(async ({ ctx }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return listClientCredentialStatuses(userId);
+  }),
+
   saveProfile: protectedProcedure.input(profileSchema).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     return upsertClientAgencyProfile(userId, input);
   }),
 
-  connectProvider: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), label: z.string().trim().min(2).max(120), provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), defaultImageModel: z.string().max(180).optional().nullable(), apiKey: z.string().min(8).max(1200).optional() })).mutation(async ({ ctx, input }) => {
+  connectProvider: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), label: z.string().trim().min(2).max(120), provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), defaultImageModel: z.string().max(180).optional().nullable(), apiKey: z.string().min(8).max(1200).optional(), verificationToken: z.string().min(20).max(4000).optional() })).mutation(async ({ ctx, input }) => {
     if (input.provider !== "manus" && !input.apiKey) throw new Error("Informe a chave de API do provedor selecionado");
     const userId = await getOperationalUserId(ctx.user);
     const apiKey = input.apiKey?.trim();
+    if (input.provider !== "manus" && (!apiKey || !verifyConnectionVerification(userId, { provider: input.provider, apiBaseUrl: input.apiBaseUrl || null, defaultModel: input.defaultModel, apiKey }, input.verificationToken))) throw new Error("Teste a chave desta configuração antes de salvar.");
     const id = await createClientAiConnection(userId, { ...input, encryptedApiKey: apiKey ? encryptProviderKey(apiKey) : null, keyHint: apiKey ? getKeyHint(apiKey) : "integrado" });
     return { id };
   }),
 
-  updateProvider: protectedProcedure.input(z.object({ connectionId: z.number().int().positive(), label: z.string().trim().min(2).max(120), provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), defaultImageModel: z.string().max(180).optional().nullable(), apiKey: z.string().trim().min(8).max(1200).optional() })).mutation(async ({ ctx, input }) => {
+  updateProvider: protectedProcedure.input(z.object({ connectionId: z.number().int().positive(), label: z.string().trim().min(2).max(120), provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), defaultImageModel: z.string().max(180).optional().nullable(), apiKey: z.string().trim().min(8).max(1200).optional(), verificationToken: z.string().min(20).max(4000).optional() })).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     const apiKey = input.apiKey?.trim();
+    const existing = await getClientAiConnection(userId, input.connectionId);
+    if (!existing) throw new Error("Conexão não encontrada");
+    const configChanged = existing.provider !== input.provider || (existing.apiBaseUrl || null) !== (input.apiBaseUrl || null) || existing.defaultModel !== input.defaultModel;
+    if (input.provider !== "manus" && ((configChanged && !apiKey) || (apiKey && !verifyConnectionVerification(userId, { provider: input.provider, apiBaseUrl: input.apiBaseUrl || null, defaultModel: input.defaultModel, apiKey }, input.verificationToken)))) throw new Error(configChanged && !apiKey ? "Informe e teste uma nova chave ao trocar provedor, URL ou modelo." : "Teste a chave desta configuração antes de salvar.");
     const id = await updateClientAiConnection(userId, input.connectionId, {
       label: input.label,
       provider: input.provider,
@@ -100,6 +114,12 @@ export const agencyRouter = router({
     return { id: await setClientAiConnectionStatus(userId, input.connectionId, input.status) };
   }),
 
+  testProviderConnection: protectedProcedure.input(z.object({ provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), apiKey: z.string().trim().min(8).max(1200).optional() })).mutation(async ({ ctx, input }) => {
+    const result = await testAgencyConnection({ provider: input.provider, apiBaseUrl: input.apiBaseUrl || null, defaultModel: input.defaultModel, apiKey: input.apiKey });
+    const userId = await getOperationalUserId(ctx.user);
+    return input.provider === "manus" || !input.apiKey ? result : { ...result, verificationToken: issueConnectionVerification(userId, { provider: input.provider, apiBaseUrl: input.apiBaseUrl || null, defaultModel: input.defaultModel, apiKey: input.apiKey }) };
+  }),
+
   createBrief: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), campaignId: z.number().int().positive().optional(), title: z.string().trim().min(3).max(220), sourceType: z.enum(["briefing", "idea", "trend", "reference", "decision"]), objective: z.string().max(240).optional(), content: z.string().trim().min(10).max(20000) })).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     return { id: await createContentBrief(userId, { ...input, objective: input.objective || null }) };
@@ -113,6 +133,11 @@ export const agencyRouter = router({
   createCampaign: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), providerConnectionId: z.number().int().positive().optional(), name: z.string().trim().min(3).max(220), mode: z.enum(["ads", "carousel", "bundle"]), objective: z.string().trim().min(3).max(240), briefing: z.string().trim().min(10).max(20000) })).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     return { id: await createAdCampaign(userId, { ...input, providerConnectionId: input.providerConnectionId || null, briefingJson: JSON.stringify({ text: input.briefing }) }) };
+  }),
+
+  updateCampaignProvider: protectedProcedure.input(z.object({ campaignId: z.number().int().positive(), providerConnectionId: z.number().int().positive().nullable() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await updateAdCampaignProvider(userId, input.campaignId, input.providerConnectionId) };
   }),
 
   versions: protectedProcedure.input(z.object({ campaignId: z.number().int().positive() })).query(async ({ ctx, input }) => {

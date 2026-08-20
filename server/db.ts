@@ -568,6 +568,26 @@ export async function getClientAiConnectionSecret(userId: number, connectionId: 
   return rows[0];
 }
 
+export async function getClientAiConnection(userId: number, connectionId: number) {
+  const db = await requireDb();
+  const rows = await db.select().from(clientAiConnections).where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId))).limit(1);
+  return rows[0];
+}
+
+export async function listClientCredentialStatuses(userId: number) {
+  const db = await requireDb();
+  const [ownedClients, connections] = await Promise.all([
+    db.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.createdByUserId, userId)).orderBy(asc(clients.name)),
+    db.select({ clientId: clientAiConnections.clientId, status: clientAiConnections.status }).from(clientAiConnections).where(eq(clientAiConnections.ownerUserId, userId)),
+  ]);
+  return ownedClients.map(client => {
+    const related = connections.filter(connection => connection.clientId === client.id);
+    const activeCount = related.filter(connection => connection.status === "active").length;
+    const disabledCount = related.filter(connection => connection.status === "disabled").length;
+    return { ...client, activeCount, disabledCount, status: activeCount ? "active" as const : disabledCount ? "disabled" as const : "missing" as const };
+  });
+}
+
 export async function listAdCampaigns(userId: number, clientId?: number) {
   const db = await requireDb();
   const conditions = [eq(adCampaigns.ownerUserId, userId)];
@@ -625,6 +645,23 @@ export async function createAdCampaign(userId: number, input: {
 export async function updateAdCampaignStatus(userId: number, campaignId: number, status: CampaignStatus) {
   const db = await requireDb();
   await db.update(adCampaigns).set({ status }).where(and(eq(adCampaigns.id, campaignId), eq(adCampaigns.ownerUserId, userId)));
+}
+
+export async function updateAdCampaignProvider(userId: number, campaignId: number, providerConnectionId: number | null) {
+  const db = await requireDb();
+  const campaigns = await db
+    .select({ id: adCampaigns.id, clientId: adCampaigns.clientId })
+    .from(adCampaigns)
+    .where(and(eq(adCampaigns.id, campaignId), eq(adCampaigns.ownerUserId, userId)))
+    .limit(1);
+  const campaign = campaigns[0];
+  if (!campaign) throw new Error("Campanha não encontrada");
+  if (providerConnectionId) {
+    const connection = await getClientAiConnectionSecret(userId, providerConnectionId);
+    if (!connection || connection.clientId !== campaign.clientId) throw new Error("O provedor selecionado não está ativo para este cliente");
+  }
+  await db.update(adCampaigns).set({ providerConnectionId }).where(and(eq(adCampaigns.id, campaignId), eq(adCampaigns.ownerUserId, userId)));
+  return campaignId;
 }
 
 export async function createAiGeneration(userId: number, input: {

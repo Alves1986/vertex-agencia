@@ -91,3 +91,10 @@
 - [x] Adicionar confirmação animada de carregamento antes de liberar a publicação aprovada no painel, mantendo a revisão humana obrigatória e sem acionar canais externos automaticamente.
 - [x] Bloquear a geração de campanhas vinculadas a conexões de IA desativadas, com erro explícito em vez de usar outro provedor.
 - [x] Exibir o estado de conexão desativada na campanha e orientar a reativação ou troca do provedor antes de gerar novamente.
+- [x] Adicionar teste de conexão da chave de API do provedor no formulário de credenciais antes de salvar, sem persistir nem expor o segredo.
+- [x] Permitir trocar o provedor de IA de campanhas existentes, preservando briefing, objetivo, modo e histórico já configurados.
+- [x] Exibir no painel principal indicadores visuais do estado de credenciais ativas, inativas ou ausentes por cliente.
+- [x] Exigir nova chave e validação ao alterar provedor, URL base ou modelo principal de uma conexão existente.
+- [x] Cobrir o bloqueio de edição de conexão incompatível sem nova chave e validação em testes de contrato e interface.
+- [x] Adicionar teste de interface que verifica que a alteração de provedor, URL ou modelo exige nova chave e teste concluído antes de salvar.
+- [x] Renderizar o diálogo de edição revalidada em teste e confirmar mensagem, chave obrigatória e botão de salvar bloqueado antes do teste de conexão.

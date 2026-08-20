@@ -18,6 +18,8 @@ type Connection = {
   encryptedApiKey: string | null;
 };
 
+type ConnectionProbe = Omit<Connection, "encryptedApiKey"> & { apiKey?: string | null };
+
 export function buildAgencyPrompt(input: { mode: AgencyGenerationMode; clientName: string; campaignName: string; objective: string; briefing: string; profile?: { positioning?: string | null; voice?: string | null; audience?: string | null; offers?: string | null; proofPolicy?: string | null; visualSystem?: string | null } | null; }) {
   const profile = input.profile ? [
     `Posicionamento: ${input.profile.positioning || "[PENDENTE]"}`,
@@ -41,6 +43,41 @@ async function callJson(url: string, init: RequestInit, read: (payload: any) => 
   const response = await fetch(url, init);
   if (!response.ok) throw new Error(`O provedor recusou a geração (${response.status})`);
   return parseOutput(read(await response.json()));
+}
+
+async function probeProvider(url: string, init: RequestInit) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    if (response.ok) return;
+    if (response.status === 401 || response.status === 403) throw new Error("A chave de API foi recusada pelo provedor.");
+    throw new Error("O provedor não confirmou a conexão. Revise a URL, o modelo e as permissões da chave.");
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("A chave de API")) throw error;
+    if (error instanceof Error && error.name === "AbortError") throw new Error("O teste de conexão excedeu o tempo esperado. Tente novamente.");
+    if (error instanceof Error && error.message.startsWith("O provedor não confirmou")) throw error;
+    throw new Error("Não foi possível alcançar o provedor. Verifique a URL e tente novamente.");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function testAgencyConnection(connection: ConnectionProbe): Promise<{ provider: ConnectionProbe["provider"]; message: string }> {
+  if (connection.provider === "manus") return { provider: "manus", message: "A conexão integrada da Manus está pronta para uso." };
+  const apiKey = connection.apiKey?.trim();
+  if (!apiKey) throw new Error("Cole uma chave de API para testar esta conexão antes de salvar.");
+  if (connection.provider === "gemini") {
+    const base = (connection.apiBaseUrl || "https://generativelanguage.googleapis.com/v1beta").replace(/\/$/, "");
+    await probeProvider(`${base}/models`, { headers: { "x-goog-api-key": apiKey } });
+  } else if (connection.provider === "anthropic") {
+    const base = (connection.apiBaseUrl || "https://api.anthropic.com/v1").replace(/\/$/, "");
+    await probeProvider(`${base}/models?limit=1`, { headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } });
+  } else {
+    const base = (connection.apiBaseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
+    await probeProvider(`${base}/models`, { headers: { Authorization: `Bearer ${apiKey}` } });
+  }
+  return { provider: connection.provider, message: "Conexão validada. A chave pode ser protegida para este cliente." };
 }
 
 export async function generateAgencyOutput(connection: Connection | null, prompt: string): Promise<{ output: AgencyOutput; provider: string; model: string }> {

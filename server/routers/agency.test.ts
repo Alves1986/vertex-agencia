@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
 
 const mocks = vi.hoisted(() => ({
-  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateClientAiConnection: vi.fn(), upsertClientAgencyProfile: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(),
+  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), upsertClientAgencyProfile: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(),
 }));
 
 vi.mock("../db", () => mocks);
 vi.mock("./helpers", () => ({ getOperationalUserId: mocks.getOperationalUserId }));
-vi.mock("../aiAds/agencyGeneration", () => ({ buildAgencyPrompt: mocks.buildAgencyPrompt, generateAgencyOutput: mocks.generateAgencyOutput }));
+vi.mock("../aiAds/agencyGeneration", () => ({ buildAgencyPrompt: mocks.buildAgencyPrompt, generateAgencyOutput: mocks.generateAgencyOutput, testAgencyConnection: mocks.testAgencyConnection }));
+vi.mock("../aiAds/connectionVerification", () => ({ issueConnectionVerification: mocks.issueConnectionVerification, verifyConnectionVerification: mocks.verifyConnectionVerification }));
 
 import { agencyRouter } from "./agency";
 
@@ -78,6 +79,7 @@ describe("agency generation review contracts", () => {
     mocks.getOperationalUserId.mockResolvedValue(7);
     mocks.updateClientAiConnection.mockResolvedValue(4);
     mocks.setClientAiConnectionStatus.mockResolvedValue(4);
+    mocks.getClientAiConnection.mockResolvedValue({ id: 4, provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5-mini" });
 
     const caller = agencyRouter.createCaller(createContext());
     await expect(caller.updateProvider({ connectionId: 4, label: "OpenAI da criação", provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5-mini", defaultImageModel: null })).resolves.toEqual({ id: 4 });
@@ -95,5 +97,37 @@ describe("agency generation review contracts", () => {
     await expect(caller.generate({ campaignId: 11, mode: "ads" })).rejects.toThrow("conexão de IA desta campanha está desativada");
     expect(mocks.createAiGeneration).not.toHaveBeenCalled();
     expect(mocks.generateAgencyOutput).not.toHaveBeenCalled();
+  });
+
+  it("testa uma chave sem persistir o segredo e troca apenas o vínculo do provedor da campanha", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.testAgencyConnection.mockResolvedValue({ provider: "openai", message: "Conexão validada." });
+    mocks.issueConnectionVerification.mockReturnValue("proof-token");
+    mocks.updateAdCampaignProvider.mockResolvedValue(11);
+    const caller = agencyRouter.createCaller(createContext());
+
+    await expect(caller.testProviderConnection({ provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5-mini", apiKey: "sk-test-secret" })).resolves.toEqual({ provider: "openai", message: "Conexão validada.", verificationToken: "proof-token" });
+    await expect(caller.updateCampaignProvider({ campaignId: 11, providerConnectionId: 4 })).resolves.toEqual({ id: 11 });
+
+    expect(mocks.testAgencyConnection).toHaveBeenCalledWith(expect.objectContaining({ provider: "openai", apiKey: "sk-test-secret" }));
+    expect(mocks.createClientAiConnection).not.toHaveBeenCalled();
+    expect(mocks.updateAdCampaignProvider).toHaveBeenCalledWith(7, 11, 4);
+  });
+
+  it("bloqueia a troca de modelo em uma conexão existente sem uma nova chave validada", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.getClientAiConnection.mockResolvedValue({ id: 4, provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5-mini" });
+    const caller = agencyRouter.createCaller(createContext());
+
+    await expect(caller.updateProvider({ connectionId: 4, label: "OpenAI da criação", provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5", defaultImageModel: null })).rejects.toThrow("Informe e teste uma nova chave");
+    expect(mocks.updateClientAiConnection).not.toHaveBeenCalled();
+  });
+
+  it("retorna somente indicadores agregados de credenciais por cliente", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.listClientCredentialStatuses.mockResolvedValue([{ id: 3, name: "Globo Acabamentos", activeCount: 1, disabledCount: 0, status: "active" }]);
+    const caller = agencyRouter.createCaller(createContext());
+    await expect(caller.credentialStatuses()).resolves.toEqual([{ id: 3, name: "Globo Acabamentos", activeCount: 1, disabledCount: 0, status: "active" }]);
+    expect(JSON.stringify(mocks.listClientCredentialStatuses.mock.results)).not.toContain("encryptedApiKey");
   });
 });

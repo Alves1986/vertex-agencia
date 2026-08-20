@@ -1,5 +1,5 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
-import { Bot, BrainCircuit, CheckCircle2, ChevronRight, Clapperboard, FileText, KeyRound, Loader2, Pencil, Plus, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, UploadCloud, WandSparkles, XCircle } from "lucide-react";
+import React, { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { Bot, BrainCircuit, CheckCircle2, ChevronRight, Clapperboard, FileText, KeyRound, Loader2, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, UploadCloud, WandSparkles, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StudioShell } from "@/components/StudioShell";
@@ -10,6 +10,7 @@ type Mode = "ads" | "carousel" | "bundle" | "strategy" | "video" | "council";
 type ProviderKind = "manus" | "openai" | "openai_compatible" | "gemini" | "anthropic";
 type ProviderForm = { label: string; provider: ProviderKind; model: string; imageModel: string; baseUrl: string; apiKey: string };
 type PublicationTarget = { id: number; title: string };
+type CampaignProviderTarget = { id: number; title: string };
 
 export const agencyModeOptions: Record<Mode, { label: string; description: string }> = {
   bundle: { label: "Campanha integrada", description: "Estratégia, anúncios, carrossel e roteiro no mesmo briefing." },
@@ -38,6 +39,14 @@ export function getCampaignGenerationBlock(providerConnectionId: number | null |
   };
 }
 
+export function getConnectionRevalidationState(input: { editing: boolean; originalConfiguration: string; provider: ProviderKind; baseUrl: string; model: string; apiKey: string }) {
+  const currentConfiguration = `${input.provider}|${input.baseUrl}|${input.model}`;
+  const configurationChanged = input.editing && input.originalConfiguration !== currentConfiguration;
+  const requiresNewKey = input.provider !== "manus" && configurationChanged;
+  const requiresTest = input.provider !== "manus" && (!input.editing || Boolean(input.apiKey.trim()) || configurationChanged);
+  return { configurationChanged, requiresNewKey, requiresTest };
+}
+
 const defaultProfile = { positioning: "", voice: "", audience: "", offers: "", proofPolicy: "", visualSystem: "" };
 const emptyProvider = (): ProviderForm => ({ label: "", provider: "manus", model: "gpt-5-mini", imageModel: "", baseUrl: "", apiKey: "" });
 
@@ -60,6 +69,12 @@ export default function Agency() {
   const [lastCampaignId, setLastCampaignId] = useState<number | null>(null);
   const [publicationTarget, setPublicationTarget] = useState<PublicationTarget | null>(null);
   const [publicationStage, setPublicationStage] = useState<"confirm" | "processing" | "complete">("confirm");
+  const [providerTestState, setProviderTestState] = useState<"idle" | "passed" | "failed">("idle");
+  const [providerTestFingerprint, setProviderTestFingerprint] = useState("");
+  const [providerVerificationToken, setProviderVerificationToken] = useState("");
+  const [editingConfigurationFingerprint, setEditingConfigurationFingerprint] = useState("");
+  const [campaignProviderTarget, setCampaignProviderTarget] = useState<CampaignProviderTarget | null>(null);
+  const [campaignProviderId, setCampaignProviderId] = useState("");
   const selectedClient = useMemo(() => clients.data?.find(item => item.id === clientId) ?? null, [clients.data, clientId]);
   const overview = trpc.agency.overview.useQuery({ clientId: clientId ?? 0 }, { enabled: clientId !== null });
   const versions = trpc.agency.versions.useQuery({ campaignId: reviewCampaignId ?? 0 }, { enabled: reviewCampaignId !== null });
@@ -74,10 +89,12 @@ export default function Agency() {
   }, [overview.data?.profile?.updatedAt]);
 
   const saveProfile = trpc.agency.saveProfile.useMutation({ onSuccess: () => { utils.agency.overview.invalidate(); toast.success("Perfil de agência salvo para este cliente."); }, onError: error => toast.error(error.message) });
-  const connected = async () => { await utils.agency.overview.invalidate(); setProviderDialogOpen(false); setEditingConnectionId(null); setProvider(emptyProvider()); toast.success("Conexão protegida e disponível somente para este cliente."); };
+  const connected = async () => { await utils.agency.overview.invalidate(); setProviderDialogOpen(false); setEditingConnectionId(null); setProvider(emptyProvider()); setProviderVerificationToken(""); setEditingConfigurationFingerprint(""); toast.success("Conexão protegida e disponível somente para este cliente."); };
   const connectProvider = trpc.agency.connectProvider.useMutation({ onSuccess: connected, onError: error => toast.error(error.message) });
   const updateProvider = trpc.agency.updateProvider.useMutation({ onSuccess: connected, onError: error => toast.error(error.message) });
   const setProviderStatus = trpc.agency.setProviderStatus.useMutation({ onSuccess: async data => { await utils.agency.overview.invalidate(); toast.success(data.id ? "Estado da conexão atualizado." : "Conexão atualizada."); }, onError: error => toast.error(error.message) });
+  const testProviderConnection = trpc.agency.testProviderConnection.useMutation({ onSuccess: (data, variables) => { setProviderTestState("passed"); setProviderTestFingerprint(`${variables.provider}|${variables.apiBaseUrl ?? ""}|${variables.defaultModel}|${variables.apiKey ?? ""}`); setProviderVerificationToken("verificationToken" in data ? data.verificationToken : ""); toast.success(data.message); }, onError: error => { setProviderTestState("failed"); setProviderTestFingerprint(""); setProviderVerificationToken(""); toast.error(error.message); } });
+  const updateCampaignProvider = trpc.agency.updateCampaignProvider.useMutation({ onSuccess: async () => { await utils.agency.overview.invalidate(); setCampaignProviderTarget(null); setCampaignProviderId(""); toast.success("Provedor atualizado sem alterar briefing, modo, versões ou aprovações."); }, onError: error => toast.error(error.message) });
   const createCampaign = trpc.agency.createCampaign.useMutation({
     onSuccess: async data => {
       await utils.agency.overview.invalidate();
@@ -90,6 +107,13 @@ export default function Agency() {
   const generate = trpc.agency.generate.useMutation({ onSuccess: async (_data, variables) => { setReviewCampaignId(variables.campaignId); await Promise.all([utils.agency.overview.invalidate(), utils.agency.versions.invalidate({ campaignId: variables.campaignId })]); toast.success("Geração concluída. Revise os materiais antes de aprovar."); }, onError: error => toast.error(error.message) });
   const approveVersion = trpc.agency.approveVersion.useMutation({ onSuccess: () => { if (reviewCampaignId) utils.agency.versions.invalidate({ campaignId: reviewCampaignId }); }, onError: error => toast.error(error.message) });
   const isSavingProvider = connectProvider.isPending || updateProvider.isPending;
+  const providerNeedsTest = provider.provider !== "manus" && Boolean(provider.apiKey.trim());
+  const revalidationState = getConnectionRevalidationState({ editing: Boolean(editingConnectionId), originalConfiguration: editingConfigurationFingerprint, provider: provider.provider, baseUrl: provider.baseUrl, model: provider.model, apiKey: provider.apiKey });
+  const configurationChanged = revalidationState.configurationChanged;
+  const requiresNewKey = revalidationState.requiresNewKey;
+  const mustTestBeforeSave = revalidationState.requiresTest;
+  const currentProviderFingerprint = `${provider.provider}|${provider.baseUrl}|${provider.model}|${provider.apiKey}`;
+  const providerTestIsCurrent = providerTestState === "passed" && providerTestFingerprint === currentProviderFingerprint;
   const selectedProvider = providerCatalog.find(item => item.value === provider.provider) ?? providerCatalog[0];
 
   function submitProfile(event: FormEvent) {
@@ -101,10 +125,15 @@ export default function Agency() {
     if (connection) {
       setEditingConnectionId(connection.id);
       setProvider({ label: connection.label, provider: connection.provider, model: connection.defaultModel, imageModel: connection.defaultImageModel ?? "", baseUrl: connection.apiBaseUrl ?? "", apiKey: "" });
+      setEditingConfigurationFingerprint(`${connection.provider}|${connection.apiBaseUrl ?? ""}|${connection.defaultModel}`);
     } else {
       setEditingConnectionId(null);
       setProvider(emptyProvider());
+      setEditingConfigurationFingerprint("");
     }
+    setProviderTestState("idle");
+    setProviderTestFingerprint("");
+    setProviderVerificationToken("");
     setProviderDialogOpen(true);
   }
   function closeProviderDialog() {
@@ -112,13 +141,39 @@ export default function Agency() {
     setProviderDialogOpen(false);
     setEditingConnectionId(null);
     setProvider(emptyProvider());
+    setProviderTestState("idle");
+    setProviderTestFingerprint("");
+    setProviderVerificationToken("");
+    setEditingConfigurationFingerprint("");
   }
   function submitProvider(event: FormEvent) {
     event.preventDefault();
     if (!clientId) return;
-    const payload = { label: provider.label, provider: provider.provider, defaultModel: provider.model, defaultImageModel: provider.imageModel || null, apiBaseUrl: provider.baseUrl || null, apiKey: provider.provider === "manus" ? undefined : provider.apiKey || undefined };
+    if (requiresNewKey && !provider.apiKey.trim()) {
+      toast.error("Informe uma nova chave ao trocar provedor, URL ou modelo desta conexão.");
+      return;
+    }
+    if (mustTestBeforeSave && (!providerTestIsCurrent || !providerVerificationToken)) {
+      toast.error("Teste a conexão antes de proteger esta chave para o cliente.");
+      return;
+    }
+    const payload = { label: provider.label, provider: provider.provider, defaultModel: provider.model, defaultImageModel: provider.imageModel || null, apiBaseUrl: provider.baseUrl || null, apiKey: provider.provider === "manus" ? undefined : provider.apiKey || undefined, verificationToken: providerTestIsCurrent ? providerVerificationToken || undefined : undefined };
     if (editingConnectionId) updateProvider.mutate({ connectionId: editingConnectionId, ...payload });
     else connectProvider.mutate({ clientId, ...payload });
+  }
+  function testProvider() {
+    if (provider.provider !== "manus" && !provider.apiKey.trim()) {
+      toast.error("Cole a chave de API que deseja validar antes de testar.");
+      return;
+    }
+    setProviderTestState("idle");
+    setProviderTestFingerprint("");
+    setProviderVerificationToken("");
+    testProviderConnection.mutate({ provider: provider.provider, apiBaseUrl: provider.baseUrl || null, defaultModel: provider.model, apiKey: provider.provider === "manus" ? undefined : provider.apiKey });
+  }
+  function openCampaignProviderDialog(target: CampaignProviderTarget, currentConnectionId: number | null | undefined, connection?: { status?: string | null } | null) {
+    setCampaignProviderTarget(target);
+    setCampaignProviderId(connection?.status === "active" && currentConnectionId ? String(currentConnectionId) : "");
   }
   function submitCampaign(event: FormEvent) {
     event.preventDefault();
@@ -188,16 +243,41 @@ export default function Agency() {
           <div className="agency-mode-grid">{(Object.keys(agencyModeOptions) as Mode[]).map(item => <button key={item} className={mode === item ? "is-selected" : ""} type="button" onClick={() => setMode(item)}><strong>{agencyModeOptions[item].label}</strong><span>{agencyModeOptions[item].description}</span></button>)}</div>
           <form onSubmit={submitCampaign} className="agency-campaign-form"><div className="agency-form-grid"><Field label="Nome da campanha" value={campaign.name} onChange={value => setCampaign({ ...campaign, name: value })} placeholder="Ex.: Linha de acabamentos premium" required /><Field label="Objetivo" value={campaign.objective} onChange={value => setCampaign({ ...campaign, objective: value })} placeholder="Ex.: gerar conversas qualificadas" required /><label className="agency-field">Provedor<select value={campaign.connectionId} onChange={event => setCampaign({ ...campaign, connectionId: event.target.value })}><option value="">Manus integrado</option>{(overview.data?.connections ?? []).filter(item => item.status === "active").map(item => <option key={item.id} value={item.id}>{item.label} · {item.defaultModel}</option>)}</select></label></div><Field label="Briefing único" value={campaign.briefing} onChange={value => setCampaign({ ...campaign, briefing: value })} placeholder="Contexto, oferta, mensagem, restrições, fatos aprovados e ação esperada." multiline required /><button className="ops-primary-button" type="submit" disabled={createCampaign.isPending}>{createCampaign.isPending ? <Loader2 size={16} /> : <Plus size={17} />} Criar material de trabalho</button></form>
         </section>
-        <section className="agency-output-grid"><div className="ops-panel"><div className="ops-panel-heading"><div><p className="ops-section-kicker">Fila de criação</p><h2>Campanhas recentes</h2></div><Sparkles size={20} /></div>{overview.isLoading ? <div className="ops-page-loading"><Loader2 size={18} /> Lendo agência…</div> : null}{!(overview.data?.campaigns.length) && !overview.isLoading ? <p className="ops-empty-copy">O primeiro briefing criado aparecerá aqui para revisão e geração.</p> : null}{(overview.data?.campaigns ?? []).slice(0, 5).map(({ campaign: item, connection }) => { const generationBlock = getCampaignGenerationBlock(item.providerConnectionId, connection); return <div className={`agency-list-row ${generationBlock.blocked ? "agency-list-row-blocked" : ""}`} key={item.id}><div><strong>{item.name}</strong><span>{item.objective}</span><small>{generationBlock.message ?? (item.status === "ready" ? "Pronto para revisão" : item.status === "failed" ? "Falha na geração" : "Rascunho de trabalho")}</small></div><div className="agency-row-actions"><button type="button" className="ops-text-button" onClick={() => setReviewCampaignId(item.id)}>Revisar</button><button type="button" className="ops-text-button" disabled={generate.isPending || generationBlock.blocked} title={generationBlock.blocked ? "Reative ou troque o provedor antes de gerar" : undefined} onClick={() => generate.mutate({ campaignId: item.id, mode: item.mode === "carousel" ? "carousel" : item.mode === "ads" ? "ads" : mode })}>Gerar <ChevronRight size={15} /></button></div></div>; })}</div>
+        <section className="agency-output-grid"><div className="ops-panel"><div className="ops-panel-heading"><div><p className="ops-section-kicker">Fila de criação</p><h2>Campanhas recentes</h2></div><Sparkles size={20} /></div>{overview.isLoading ? <div className="ops-page-loading"><Loader2 size={18} /> Lendo agência…</div> : null}{!(overview.data?.campaigns.length) && !overview.isLoading ? <p className="ops-empty-copy">O primeiro briefing criado aparecerá aqui para revisão e geração.</p> : null}{(overview.data?.campaigns ?? []).slice(0, 5).map(({ campaign: item, connection }) => { const generationBlock = getCampaignGenerationBlock(item.providerConnectionId, connection); return <div className={`agency-list-row ${generationBlock.blocked ? "agency-list-row-blocked" : ""}`} key={item.id}><div><strong>{item.name}</strong><span>{item.objective}</span><small>{generationBlock.message ?? (item.status === "ready" ? "Pronto para revisão" : item.status === "failed" ? "Falha na geração" : "Rascunho de trabalho")}</small></div><div className="agency-row-actions"><button type="button" className="ops-text-button" onClick={() => setReviewCampaignId(item.id)}>Revisar</button><button type="button" className="ops-text-button" onClick={() => openCampaignProviderDialog({ id: item.id, title: item.name }, item.providerConnectionId, connection)}><RefreshCw size={14} /> Provedor</button><button type="button" className="ops-text-button" disabled={generate.isPending || generationBlock.blocked} title={generationBlock.blocked ? "Reative ou troque o provedor antes de gerar" : undefined} onClick={() => generate.mutate({ campaignId: item.id, mode: item.mode === "carousel" ? "carousel" : item.mode === "ads" ? "ads" : mode })}>Gerar <ChevronRight size={15} /></button></div></div>; })}</div>
           <div className="ops-panel"><div className="ops-panel-heading"><div><p className="ops-section-kicker">Conselho e inteligência</p><h2>Sinais para revisar</h2></div><BrainCircuit size={20} /></div>{(overview.data?.trends ?? []).slice(0, 3).map(item => <div className="agency-list-row" key={item.id}><div><strong>{item.title}</strong><span>{item.platform} · prioridade {item.score ?? "—"}</span></div></div>)}{(overview.data?.decisions ?? []).slice(0, 3).map(item => <div className="agency-list-row" key={item.id}><div><strong>{item.recommendation}</strong><small>Risco: {item.primaryRisk || "em revisão"}</small></div></div>)}{!(overview.data?.trends.length || overview.data?.decisions.length) ? <p className="ops-empty-copy">Registre sinais e decisões após gerar ou revisar uma campanha. A IA recomenda; sua equipe aprova.</p> : null}</div></section>
         <section className="ops-panel agency-review-queue" aria-label="Revisão humana de versões"><div className="ops-panel-heading"><div><p className="ops-section-kicker">Revisão humana</p><h2>Versões e aprovações</h2></div><CheckCircle2 size={20} /></div>{!reviewCampaignId ? <p className="ops-empty-copy">Escolha <strong>Revisar</strong> em uma campanha para abrir seu histórico de materiais.</p> : null}{versions.isLoading ? <div className="ops-page-loading"><Loader2 size={18} /> Carregando versões…</div> : null}{reviewCampaignId && !versions.isLoading && !versions.data?.length ? <p className="ops-empty-copy">Ainda não há material gerado para esta campanha.</p> : null}{(versions.data ?? []).map(version => <div className="agency-version-row" key={version.id}><div><strong>{version.kind} · V{version.versionNumber}</strong><span>{version.summary || "Material sem resumo"}</span><small>Status: {version.status === "approved" ? "Liberada para publicação" : version.status === "rejected" ? "Rejeitada" : "Em revisão"}</small></div>{version.status === "review" ? <div className="agency-row-actions"><button type="button" className="ops-text-button" disabled={approveVersion.isPending} onClick={() => approveVersion.mutate({ creativeVersionId: version.id, decision: "changes_requested" })}>Ajustes</button><button type="button" className="ops-text-button agency-reject-action" disabled={approveVersion.isPending} onClick={() => approveVersion.mutate({ creativeVersionId: version.id, decision: "rejected" })}><XCircle size={15} /> Rejeitar</button><button type="button" className="ops-primary-button agency-publish-action" disabled={approveVersion.isPending} onClick={() => requestPublication({ id: version.id, title: `${version.kind} · V${version.versionNumber}` })}><UploadCloud size={15} /> Liberar publicação</button></div> : null}</div>)}</section>
         {lastCampaignId ? <p className="agency-result-note">Campanha #{lastCampaignId} pronta para geração. Selecione <strong>Gerar</strong> na fila quando quiser enviar o briefing ao provedor.</p> : null}
       </> : null}
     </div>
-    <Dialog open={providerDialogOpen} onOpenChange={open => { if (!open) closeProviderDialog(); }}><DialogContent className="agency-dialog" showCloseButton={!isSavingProvider} onPointerDownOutside={event => { if (isSavingProvider) event.preventDefault(); }}><form onSubmit={submitProvider}><DialogHeader><p className="ops-section-kicker">{editingConnectionId ? "Editar conexão" : "Nova conexão"}</p><DialogTitle>{editingConnectionId ? "Atualize o provedor com segurança" : "Configure o motor de IA"}</DialogTitle><DialogDescription>{selectedProvider.description} {editingConnectionId && provider.provider !== "manus" ? "Deixe a chave em branco para preservar a credencial cifrada atual." : ""}</DialogDescription></DialogHeader><div className="agency-dialog-fields"><Field label="Nome da conexão" value={provider.label} onChange={value => setProvider({ ...provider, label: value })} placeholder="Ex.: OpenAI · Marketing" required /><label className="agency-field"><span>Provedor</span><select value={provider.provider} onChange={event => { const next = event.target.value as ProviderKind; const preset = providerCatalog.find(item => item.value === next); setProvider({ ...provider, provider: next, model: preset?.defaultModel ?? provider.model, baseUrl: next === "openai_compatible" ? provider.baseUrl : "" }); }}>{providerCatalog.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><Field label="Modelo de texto" value={provider.model} onChange={value => setProvider({ ...provider, model: value })} placeholder="Modelo de texto" required /><Field label="Modelo de imagem (opcional)" value={provider.imageModel} onChange={value => setProvider({ ...provider, imageModel: value })} placeholder="Modelo de imagem, se houver" />{provider.provider !== "manus" ? <><Field label="URL base (opcional)" value={provider.baseUrl} onChange={value => setProvider({ ...provider, baseUrl: value })} placeholder="https://..." /><Field label={editingConnectionId ? "Nova chave de API (opcional)" : "Chave de API"} value={provider.apiKey} onChange={value => setProvider({ ...provider, apiKey: value })} placeholder="Cole a chave do cliente" type="password" autoComplete="new-password" required={!editingConnectionId} /></> : null}</div><p className="agency-dialog-security"><ShieldCheck size={15} />A chave é cifrada em repouso, não retorna à interface e não é incluída em relatórios.</p><DialogFooter><button className="ops-text-button" type="button" disabled={isSavingProvider} onClick={closeProviderDialog}>Cancelar</button><button className="ops-primary-button" type="submit" disabled={isSavingProvider}>{isSavingProvider ? <Loader2 size={16} /> : <ShieldCheck size={16} />}{editingConnectionId ? "Salvar alterações" : "Proteger conexão"}</button></DialogFooter></form></DialogContent></Dialog>
+    <ProviderConnectionDialog open={providerDialogOpen} onOpenChange={open => { if (!open) closeProviderDialog(); }} onSubmit={submitProvider} onCancel={closeProviderDialog} provider={provider} setProvider={setProvider} editing={Boolean(editingConnectionId)} selectedProvider={selectedProvider} saving={isSavingProvider} testing={testProviderConnection.isPending} testState={providerTestState} testIsCurrent={providerTestIsCurrent} requiresTest={mustTestBeforeSave} requiresNewKey={requiresNewKey} onTest={testProvider} />
+    <CampaignProviderDialog open={Boolean(campaignProviderTarget)} onOpenChange={open => { if (!open && !updateCampaignProvider.isPending) { setCampaignProviderTarget(null); setCampaignProviderId(""); } }} target={campaignProviderTarget} providerId={campaignProviderId} setProviderId={setCampaignProviderId} connections={overview.data?.connections ?? []} saving={updateCampaignProvider.isPending} onCancel={() => { setCampaignProviderTarget(null); setCampaignProviderId(""); }} onConfirm={() => campaignProviderTarget && updateCampaignProvider.mutate({ campaignId: campaignProviderTarget.id, providerConnectionId: campaignProviderId ? Number(campaignProviderId) : null })} />
     <Dialog open={Boolean(publicationTarget)} onOpenChange={open => { if (!open) closePublicationDialog(); }}><DialogContent className="agency-publication-dialog" showCloseButton={publicationStage !== "processing"} onPointerDownOutside={event => { if (publicationStage === "processing") event.preventDefault(); }}><DialogHeader><p className="ops-section-kicker">Confirmação humana</p><DialogTitle>{publicationStage === "complete" ? "Versão liberada" : "Liberar para publicação?"}</DialogTitle><DialogDescription>{publicationStage === "complete" ? "O histórico recebeu sua aprovação. A equipe pode agora publicar no canal escolhido." : `Você está liberando ${publicationTarget?.title ?? "esta versão"} após sua revisão.`}</DialogDescription></DialogHeader>{publicationStage === "processing" ? <div className="agency-publication-loading" role="status" aria-live="polite"><span className="agency-publication-orbit"><Loader2 size={25} /></span><div><strong>Registrando sua revisão</strong><p>Validando a liberação antes de tornar o material disponível no painel.</p></div></div> : publicationStage === "complete" ? <div className="agency-publication-complete"><CheckCircle2 size={24} /><p>Liberação registrada com sucesso.</p></div> : <div className="agency-publication-guardrail"><ShieldCheck size={18} /><p>{publicationGuardrail} Esta etapa apenas registra a decisão humana e libera o material para o fluxo operacional.</p></div>}<DialogFooter>{publicationStage === "confirm" ? <><button className="ops-text-button" type="button" onClick={closePublicationDialog}>Voltar</button><button className="ops-primary-button agency-publish-action" type="button" onClick={confirmPublication}><UploadCloud size={16} />Confirmar liberação</button></> : null}</DialogFooter></DialogContent></Dialog>
   </StudioShell>;
 }
 
 function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: number | string }) { return <div className="agency-metric"><span>{icon}</span><strong>{value}</strong><small>{label}</small></div>; }
 function Field({ label, value, onChange, placeholder, multiline, type = "text", required, autoComplete }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; multiline?: boolean; type?: string; required?: boolean; autoComplete?: string }) { return <label className="agency-field"><span>{label}</span>{multiline ? <textarea value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} required={required} /> : <input type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} required={required} autoComplete={autoComplete} />}</label>; }
+export function ProviderConnectionDialog({ open, onOpenChange, onSubmit, onCancel, provider, setProvider, editing, selectedProvider, saving, testing, testState, testIsCurrent, requiresTest, requiresNewKey, onTest }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (event: FormEvent) => void; onCancel: () => void; provider: ProviderForm; setProvider: (provider: ProviderForm) => void; editing: boolean; selectedProvider: { description: string }; saving: boolean; testing: boolean; testState: "idle" | "passed" | "failed"; testIsCurrent: boolean; requiresTest: boolean; requiresNewKey: boolean; onTest: () => void }) {
+  const update = (partial: Partial<ProviderForm>) => setProvider({ ...provider, ...partial });
+  const description = requiresNewKey
+    ? "Você alterou o provedor, URL ou modelo. Informe uma nova chave e conclua o teste antes de salvar."
+    : editing && provider.provider !== "manus"
+      ? "Deixe a chave em branco para preservar a credencial cifrada atual; ao trocar a chave, valide-a antes de salvar."
+      : "";
+  const testMessage = testing
+    ? "Validando sem salvar a chave…"
+    : testIsCurrent
+      ? "Conexão validada. Pode salvar com segurança."
+      : testState === "failed"
+        ? "O teste falhou. Revise os dados antes de salvar."
+        : requiresNewKey
+          ? "A alteração exige uma nova chave e uma validação concluída."
+          : provider.provider === "manus"
+            ? "Valide a integração antes de salvar."
+            : "O teste é obrigatório para uma chave nova ou alterada.";
+
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="agency-dialog" showCloseButton={!saving} onPointerDownOutside={event => { if (saving) event.preventDefault(); }}><form onSubmit={onSubmit}><DialogHeader><p className="ops-section-kicker">{editing ? "Editar conexão" : "Nova conexão"}</p><DialogTitle>{editing ? "Atualize o provedor com segurança" : "Configure o motor de IA"}</DialogTitle><DialogDescription>{selectedProvider.description} {description}</DialogDescription></DialogHeader><div className="agency-dialog-fields"><Field label="Nome da conexão" value={provider.label} onChange={label => update({ label })} placeholder="Ex.: OpenAI · Marketing" required /><label className="agency-field"><span>Provedor</span><select value={provider.provider} onChange={event => { const next = event.target.value as ProviderKind; const preset = providerCatalog.find(item => item.value === next); update({ provider: next, model: preset?.defaultModel ?? provider.model, baseUrl: next === "openai_compatible" ? provider.baseUrl : "", apiKey: "" }); }}>{providerCatalog.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><Field label="Modelo de texto" value={provider.model} onChange={model => update({ model })} placeholder="Modelo de texto" required /><Field label="Modelo de imagem (opcional)" value={provider.imageModel} onChange={imageModel => update({ imageModel })} placeholder="Modelo de imagem, se houver" />{provider.provider !== "manus" ? <><Field label="URL base (opcional)" value={provider.baseUrl} onChange={baseUrl => update({ baseUrl })} placeholder="https://..." /><Field label={requiresNewKey ? "Nova chave de API (obrigatória)" : editing ? "Nova chave de API (opcional)" : "Chave de API"} value={provider.apiKey} onChange={apiKey => update({ apiKey })} placeholder="Cole a chave do cliente" type="password" autoComplete="new-password" required={!editing || requiresNewKey} /></> : null}</div><div className={`agency-connection-test ${testIsCurrent ? "is-passed" : testState === "failed" ? "is-failed" : ""}`}><button className="ops-outline-button" type="button" disabled={testing} onClick={onTest}>{testing ? <Loader2 size={15} /> : <RefreshCw size={15} />} Testar conexão</button><span>{testMessage}</span></div><p className="agency-dialog-security"><ShieldCheck size={15} />A chave é usada apenas no teste servidor a servidor, é cifrada em repouso ao salvar e não retorna à interface.</p><DialogFooter><button className="ops-text-button" type="button" disabled={saving} onClick={onCancel}>Cancelar</button><button className="ops-primary-button" type="submit" disabled={saving || testing || (requiresTest && !testIsCurrent)}>{saving ? <Loader2 size={16} /> : <ShieldCheck size={16} />}{editing ? "Salvar alterações" : "Proteger conexão"}</button></DialogFooter></form></DialogContent></Dialog>;
+}
+function CampaignProviderDialog({ open, onOpenChange, target, providerId, setProviderId, connections, saving, onCancel, onConfirm }: { open: boolean; onOpenChange: (open: boolean) => void; target: CampaignProviderTarget | null; providerId: string; setProviderId: (value: string) => void; connections: Array<{ id: number; label: string; defaultModel: string; status?: string | null }>; saving: boolean; onCancel: () => void; onConfirm: () => void }) {
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="agency-dialog"><DialogHeader><p className="ops-section-kicker">Troca preservada</p><DialogTitle>Alterar o provedor da campanha</DialogTitle><DialogDescription>Escolha um provedor ativo para <strong>{target?.title}</strong>. O briefing, objetivo, modo, versões e aprovações permanecem inalterados.</DialogDescription></DialogHeader><div className="agency-dialog-fields"><label className="agency-field"><span>Novo provedor</span><select value={providerId} onChange={event => setProviderId(event.target.value)}><option value="">Manus integrado</option>{connections.filter(item => item.status === "active").map(item => <option key={item.id} value={item.id}>{item.label} · {item.defaultModel}</option>)}</select></label></div><p className="agency-dialog-security"><ShieldCheck size={15} />A troca altera somente o vínculo do motor de IA. Ela não gera conteúdo, não substitui materiais e não publica nada.</p><DialogFooter><button className="ops-text-button" type="button" disabled={saving} onClick={onCancel}>Cancelar</button><button className="ops-primary-button" type="button" disabled={saving || !target} onClick={onConfirm}>{saving ? <Loader2 size={16} /> : <RefreshCw size={16} />} Atualizar provedor</button></DialogFooter></DialogContent></Dialog>;
+}
