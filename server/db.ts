@@ -520,6 +520,48 @@ export async function createClientAiConnection(userId: number, input: {
   return created.id;
 }
 
+export async function updateClientAiConnection(userId: number, connectionId: number, input: {
+  label: string;
+  provider: ProviderKind;
+  apiBaseUrl?: string | null;
+  defaultModel: string;
+  defaultImageModel?: string | null;
+  encryptedApiKey?: string | null;
+  keyHint?: string | null;
+}) {
+  const db = await requireDb();
+  const rows = await db
+    .select({ id: clientAiConnections.id, provider: clientAiConnections.provider })
+    .from(clientAiConnections)
+    .where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId)))
+    .limit(1);
+  const connection = rows[0];
+  if (!connection) throw new Error("Conexão de IA não encontrada");
+  if (connection.provider !== input.provider && input.provider !== "manus" && !input.encryptedApiKey) {
+    throw new Error("Ao trocar de provedor, informe uma nova chave de API");
+  }
+  await db
+    .update(clientAiConnections)
+    .set(input)
+    .where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId)));
+  return connectionId;
+}
+
+export async function setClientAiConnectionStatus(userId: number, connectionId: number, status: "active" | "disabled") {
+  const db = await requireDb();
+  const rows = await db
+    .select({ id: clientAiConnections.id })
+    .from(clientAiConnections)
+    .where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId)))
+    .limit(1);
+  if (!rows[0]) throw new Error("Conexão de IA não encontrada");
+  await db
+    .update(clientAiConnections)
+    .set({ status })
+    .where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId)));
+  return connectionId;
+}
+
 export async function getClientAiConnectionSecret(userId: number, connectionId: number) {
   const db = await requireDb();
   const rows = await db.select().from(clientAiConnections).where(and(eq(clientAiConnections.id, connectionId), eq(clientAiConnections.ownerUserId, userId), eq(clientAiConnections.status, "active"))).limit(1);
@@ -531,7 +573,17 @@ export async function listAdCampaigns(userId: number, clientId?: number) {
   const conditions = [eq(adCampaigns.ownerUserId, userId)];
   if (clientId) conditions.push(eq(adCampaigns.clientId, clientId));
   return db
-    .select({ campaign: adCampaigns, client: clients, connection: clientAiConnections })
+    .select({
+      campaign: adCampaigns,
+      client: clients,
+      connection: {
+        id: clientAiConnections.id,
+        label: clientAiConnections.label,
+        provider: clientAiConnections.provider,
+        defaultModel: clientAiConnections.defaultModel,
+        status: clientAiConnections.status,
+      },
+    })
     .from(adCampaigns)
     .innerJoin(clients, eq(adCampaigns.clientId, clients.id))
     .leftJoin(clientAiConnections, eq(adCampaigns.providerConnectionId, clientAiConnections.id))

@@ -23,7 +23,9 @@ import {
   listTrendSignals,
   listVideoScripts,
   replaceCarouselSlides,
+  setClientAiConnectionStatus,
   updateAdCampaignStatus,
+  updateClientAiConnection,
   upsertClientAgencyProfile,
 } from "../db";
 import { encryptProviderKey, getKeyHint } from "../aiAds/crypto";
@@ -50,13 +52,20 @@ function toPublicConnection<T extends object>(connection: T): T {
   return publicConnection;
 }
 
+function toPublicCampaign<T extends { connection?: object | null }>(item: T): T {
+  return {
+    ...item,
+    connection: item.connection ? toPublicConnection(item.connection) : item.connection,
+  };
+}
+
 export const agencyRouter = router({
   overview: protectedProcedure.input(z.object({ clientId: z.number().int().positive() })).query(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     const [profile, connections, campaigns, briefs, trends, videos, decisions] = await Promise.all([
       getClientAgencyProfile(userId, input.clientId), listClientAiConnections(userId, input.clientId), listAdCampaigns(userId, input.clientId), listAgencyBriefs(userId, input.clientId), listTrendSignals(userId, input.clientId), listVideoScripts(userId, input.clientId), listStrategyDecisions(userId, input.clientId),
     ]);
-    return { profile, connections: connections.map(toPublicConnection), campaigns, briefs, trends, videos, decisions };
+    return { profile, connections: connections.map(toPublicConnection), campaigns: campaigns.map(toPublicCampaign), briefs, trends, videos, decisions };
   }),
 
   saveProfile: protectedProcedure.input(profileSchema).mutation(async ({ ctx, input }) => {
@@ -70,6 +79,25 @@ export const agencyRouter = router({
     const apiKey = input.apiKey?.trim();
     const id = await createClientAiConnection(userId, { ...input, encryptedApiKey: apiKey ? encryptProviderKey(apiKey) : null, keyHint: apiKey ? getKeyHint(apiKey) : "integrado" });
     return { id };
+  }),
+
+  updateProvider: protectedProcedure.input(z.object({ connectionId: z.number().int().positive(), label: z.string().trim().min(2).max(120), provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), defaultImageModel: z.string().max(180).optional().nullable(), apiKey: z.string().trim().min(8).max(1200).optional() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    const apiKey = input.apiKey?.trim();
+    const id = await updateClientAiConnection(userId, input.connectionId, {
+      label: input.label,
+      provider: input.provider,
+      apiBaseUrl: input.apiBaseUrl,
+      defaultModel: input.defaultModel,
+      defaultImageModel: input.defaultImageModel,
+      ...(apiKey ? { encryptedApiKey: encryptProviderKey(apiKey), keyHint: getKeyHint(apiKey) } : {}),
+    });
+    return { id };
+  }),
+
+  setProviderStatus: protectedProcedure.input(z.object({ connectionId: z.number().int().positive(), status: z.enum(["active", "disabled"]) })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await setClientAiConnectionStatus(userId, input.connectionId, input.status) };
   }),
 
   createBrief: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), campaignId: z.number().int().positive().optional(), title: z.string().trim().min(3).max(220), sourceType: z.enum(["briefing", "idea", "trend", "reference", "decision"]), objective: z.string().max(240).optional(), content: z.string().trim().min(10).max(20000) })).mutation(async ({ ctx, input }) => {
@@ -106,8 +134,14 @@ export const agencyRouter = router({
     const userId = await getOperationalUserId(ctx.user);
     const record = await getAdCampaign(userId, input.campaignId);
     if (!record) throw new Error("Campanha não encontrada");
+    if (record.campaign.providerConnectionId && record.connection?.status === "disabled") {
+      throw new Error("A conexão de IA desta campanha está desativada. Reative-a ou escolha outro provedor antes de gerar.");
+    }
     const profile = await getClientAgencyProfile(userId, record.campaign.clientId);
     const connection = record.campaign.providerConnectionId ? await getClientAiConnectionSecret(userId, record.campaign.providerConnectionId) : null;
+    if (record.campaign.providerConnectionId && !connection) {
+      throw new Error("A conexão de IA desta campanha não está disponível. Verifique o provedor antes de gerar.");
+    }
     const briefing = (() => { try { return JSON.parse(record.campaign.briefingJson).text || record.campaign.briefingJson; } catch { return record.campaign.briefingJson; } })();
     const prompt = buildAgencyPrompt({ mode: input.mode, clientName: record.client.name, campaignName: record.campaign.name, objective: record.campaign.objective, briefing, profile });
     await updateAdCampaignStatus(userId, input.campaignId, "generating");

@@ -87,3 +87,7 @@
 - [x] Confirmar o upload permanente da logo VERTEX Consulting e registrar a URL efetivamente usada pela interface.
 - [x] Validar a assinatura VERTEX Consulting em viewport móvel e registrar a evidência responsiva da navegação.
 - [x] Sincronizar a atualização de identidade VERTEX Consulting na branch de revisão.
+- [x] Criar uma interface intuitiva e segura para configurar, atualizar e desativar credenciais de provedores de IA por cliente.
+- [x] Adicionar confirmação animada de carregamento antes de liberar a publicação aprovada no painel, mantendo a revisão humana obrigatória e sem acionar canais externos automaticamente.
+- [x] Bloquear a geração de campanhas vinculadas a conexões de IA desativadas, com erro explícito em vez de usar outro provedor.
+- [x] Exibir o estado de conexão desativada na campanha e orientar a reativação ou troca do provedor antes de gerar novamente.
