@@ -49,6 +49,7 @@ import {
   upsertClientAgencyProfile,
 } from "../db";
 import { storagePut } from "../storage";
+import { createApprovalHistoryExport } from "../exports/approvalHistoryExport";
 import { encryptProviderKey, getKeyHint } from "../aiAds/crypto";
 import { buildAgencyPrompt, generateAgencyOutput, testAgencyConnection, type AgencyGenerationMode } from "../aiAds/agencyGeneration";
 import { issueConnectionVerification, verifyConnectionVerification } from "../aiAds/connectionVerification";
@@ -59,6 +60,9 @@ const modeSchema = z.enum(["ads", "carousel", "bundle", "strategy", "video", "co
 const profileSchema = z.object({ clientId: z.number().int().positive(), positioning: z.string().max(4000).optional().nullable(), voice: z.string().max(240).optional().nullable(), audience: z.string().max(4000).optional().nullable(), offers: z.string().max(4000).optional().nullable(), proofPolicy: z.string().max(4000).optional().nullable(), visualSystem: z.string().max(4000).optional().nullable(), departmentContextJson: z.string().max(12000).optional().nullable() });
 const carouselSlideSchema = z.object({ slideNumber: z.number().int().min(1).max(10), role: z.enum(["cover", "context", "insight", "proof", "solution", "cta"]), headline: z.string().trim().min(1).max(500), body: z.string().max(2000).optional().nullable(), visualDirection: z.string().max(2000).optional().nullable(), imagePrompt: z.string().max(2000).optional().nullable() });
 const carouselFieldsSchema = z.object({ keyMessage: z.string().max(4000).optional(), audience: z.string().max(2000).optional(), slideCount: z.string().max(4).optional(), format: z.string().max(240).optional(), visualDirection: z.string().max(4000).optional(), callToAction: z.string().max(1200).optional(), assetIds: z.array(z.number().int().positive()).max(20).optional() });
+const approvalHistoryFilterSchema = z.object({ campaignId: z.number().int().positive(), reviewerUserId: z.number().int().positive().optional(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).superRefine((value, ctx) => {
+  if (value.startDate && value.endDate && value.startDate > value.endDate) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A data inicial não pode ser posterior à data final.", path: ["endDate"] });
+});
 
 function toCampaignMode(mode: AgencyGenerationMode) {
   return mode === "carousel" ? "carousel" : mode === "ads" ? "ads" : "bundle" as const;
@@ -265,9 +269,18 @@ export const agencyRouter = router({
     return listCreativeApprovals(userId, input.creativeVersionId);
   }),
 
-  approvalHistory: protectedProcedure.input(z.object({ campaignId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+  approvalHistory: protectedProcedure.input(approvalHistoryFilterSchema).query(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
-    return listCampaignApprovalHistory(userId, input.campaignId);
+    return listCampaignApprovalHistory(userId, input.campaignId, { reviewerUserId: input.reviewerUserId, startDate: input.startDate, endDate: input.endDate });
+  }),
+
+  exportApprovalHistory: protectedProcedure.input(approvalHistoryFilterSchema.safeExtend({ format: z.enum(["csv", "pdf"]) })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    const campaign = await getAdCampaign(userId, input.campaignId);
+    if (!campaign) throw new Error("Campanha não encontrada neste espaço de trabalho");
+    const entries = (await listCampaignApprovalHistory(userId, input.campaignId, { reviewerUserId: input.reviewerUserId, startDate: input.startDate, endDate: input.endDate })).slice(0, 500);
+    const reviewerName = input.reviewerUserId ? entries.find(entry => entry.reviewerUserId === input.reviewerUserId)?.reviewerName ?? null : null;
+    return createApprovalHistoryExport({ format: input.format, campaignId: input.campaignId, campaignName: campaign.campaign.name, entries, filters: { reviewerName, startDate: input.startDate, endDate: input.endDate } });
   }),
 
   carouselSlides: protectedProcedure.input(z.object({ campaignId: z.number().int().positive() })).query(async ({ ctx, input }) => {

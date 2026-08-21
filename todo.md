@@ -195,3 +195,8 @@
 - [x] Criar uma tela de histórico de aprovações por campanha com decisões, responsável, data, notas e slides aprovados em lote.
 - [x] Expor contratos protegidos e testes para consultar o histórico de aprovações sem acesso entre clientes.
 - [x] Configurar o motor de IA integrado e testar a geração completa de um carrossel sem expor chaves de API.
+- [x] Adicionar filtros de responsável e período à tela de histórico de aprovações por campanha.
+- [x] Expor os filtros em contratos protegidos, preservando isolamento por workspace e cliente.
+- [x] Implementar exportação em CSV do histórico filtrado, com conteúdo seguro para compartilhamento.
+- [x] Implementar exportação em PDF do histórico filtrado, com identificação da campanha e critérios aplicados.
+- [x] Cobrir filtros e exportações com testes automatizados, validar os arquivos gerados e documentar o envio ao cliente.

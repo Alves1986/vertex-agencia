@@ -50,3 +50,18 @@ Antes de gerar material comercial, selecione o cliente correto, informe somente 
 ## Validação visual
 
 Em 21 de agosto de 2026, a página **Agência IA** foi revisada nas larguras de **1280 × 720** e **375 × 812**. O seletor de cliente, o estado do motor integrado, o catálogo de serviços, o formulário de briefing, a fila de campanhas e a área **Versões e aprovações** permaneceram legíveis nos dois formatos. No conjunto de dados de validação não havia campanha criada; por isso, a área de versões exibiu corretamente sua orientação para iniciar uma revisão, em vez de apresentar histórico inexistente.
+
+## Filtros e exportação para clientes
+
+Na linha do tempo de uma campanha, selecione um responsável e, se necessário, uma data inicial e final. Os registros apresentados e o arquivo exportado usam o mesmo recorte. Use **CSV** para análise em planilhas e **PDF** para enviar uma evidência legível ao cliente.
+
+| Formato | Conteúdo | Uso indicado |
+|---|---|---|
+| CSV | Campos estruturados, critérios aplicados e uma linha por decisão | Auditoria, conciliação ou compartilhamento em planilha |
+| PDF | Cabeçalho da campanha, critérios e eventos em ordem cronológica | Aprovação documental e envio por e-mail ou WhatsApp |
+
+O download contém somente o histórico da campanha selecionada, limitado ao espaço de trabalho do usuário autenticado. As exportações não incluem chaves de IA, tokens, configurações de conexão ou registros de outros clientes. Para evitar arquivos excessivos, o relatório é limitado a 500 eventos por solicitação.
+
+### Evidência complementar
+
+Os filtros por responsável e período, a serialização CSV em UTF-8, a assinatura PDF e o contrato protegido de exportação foram verificados por testes automatizados. No conjunto de dados usado para a revisão visual não havia campanha persistida; por isso, os controles de exportação não foram materializados nas capturas, sem prejuízo à validação dos formatos e da responsividade geral da página.

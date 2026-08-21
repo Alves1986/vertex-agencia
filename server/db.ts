@@ -1512,7 +1512,7 @@ export type CampaignApprovalHistoryEntry = {
 };
 
 /** Linha do tempo auditável da campanha, limitada ao proprietário da operação. */
-export async function listCampaignApprovalHistory(userId: number, campaignId: number): Promise<CampaignApprovalHistoryEntry[]> {
+export async function listCampaignApprovalHistory(userId: number, campaignId: number, filters?: { reviewerUserId?: number; startDate?: string; endDate?: string }): Promise<CampaignApprovalHistoryEntry[]> {
   const db = await requireDb();
   const campaign = await getAdCampaign(userId, campaignId);
   if (!campaign) return [];
@@ -1532,10 +1532,13 @@ export async function listCampaignApprovalHistory(userId: number, campaignId: nu
       return [];
     }
   };
-  return [
+  const entries = [
     ...versionApprovals.map(item => ({ id: item.id, creativeVersionId: item.creativeVersionId, reviewerUserId: item.reviewerUserId, reviewerName: reviewerNames.get(item.reviewerUserId) ?? null, decision: item.decision, note: item.note, createdAt: item.createdAt, source: "version_approval" as const, slideNumbers: [] })),
     ...batchApprovals.map(item => ({ id: item.id, creativeVersionId: item.creativeVersionId, reviewerUserId: item.reviewerUserId, reviewerName: reviewerNames.get(item.reviewerUserId) ?? null, decision: item.decision, note: item.note, createdAt: item.createdAt, source: "carousel_batch" as const, slideNumbers: safeSlideNumbers(item.slideNumbersJson) })),
   ].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+  const startAt = filters?.startDate ? new Date(`${filters.startDate}T00:00:00.000Z`) : null;
+  const endAt = filters?.endDate ? new Date(`${filters.endDate}T23:59:59.999Z`) : null;
+  return entries.filter(entry => (!filters?.reviewerUserId || entry.reviewerUserId === filters.reviewerUserId) && (!startAt || entry.createdAt >= startAt) && (!endAt || entry.createdAt <= endAt));
 }
 
 export async function listCarouselSlides(userId: number, campaignId: number) {
