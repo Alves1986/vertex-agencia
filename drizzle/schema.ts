@@ -461,6 +461,307 @@ export const strategyDecisions = mysqlTable(
   table => [index("strategy_decisions_client_idx").on(table.clientId), index("strategy_decisions_campaign_idx").on(table.campaignId), index("strategy_decisions_owner_idx").on(table.ownerUserId), index("strategy_decisions_status_idx").on(table.status)],
 );
 
+/** Usuários convidados pelo cliente para operar o portal, sem acesso aos outros clientes da agência. */
+export const clientPortalMembers = mysqlTable(
+  "client_portal_members",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    invitedByUserId: int("invitedByUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: mysqlEnum("role", ["client_admin", "manager", "agent", "viewer"]).default("viewer").notNull(),
+    status: mysqlEnum("status", ["invited", "active", "suspended"]).default("invited").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("client_portal_members_client_user_unique").on(table.clientId, table.userId),
+    index("client_portal_members_user_status_idx").on(table.userId, table.status),
+  ],
+);
+
+/** Canal isolado por cliente; segredos e detalhes do provedor permanecem cifrados no servidor. */
+export const whatsappChannels = mysqlTable(
+  "whatsapp_channels",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 140 }).notNull(),
+    provider: mysqlEnum("provider", ["meta_cloud", "twilio"]).notNull(),
+    status: mysqlEnum("status", ["draft", "verification_pending", "active", "paused", "error"]).default("draft").notNull(),
+    displayPhoneNumber: varchar("displayPhoneNumber", { length: 40 }),
+    externalAccountId: varchar("externalAccountId", { length: 220 }),
+    externalSenderId: varchar("externalSenderId", { length: 220 }),
+    encryptedConfig: text("encryptedConfig"),
+    configHint: varchar("configHint", { length: 32 }),
+    verifiedAt: timestamp("verifiedAt"),
+    lastInboundAt: timestamp("lastInboundAt"),
+    lastOutboundAt: timestamp("lastOutboundAt"),
+    lastError: text("lastError"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("whatsapp_channels_owner_client_label_unique").on(table.ownerUserId, table.clientId, table.label),
+    index("whatsapp_channels_client_status_idx").on(table.clientId, table.status),
+    index("whatsapp_channels_provider_sender_idx").on(table.provider, table.externalSenderId),
+  ],
+);
+
+/** Política de atendimento e escolha entre chave do cliente ou IA gerenciada pela VERTEX. */
+export const whatsappAiPolicies = mysqlTable(
+  "whatsapp_ai_policies",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    aiAccessMode: mysqlEnum("aiAccessMode", ["client_api_key", "vertex_managed"]).default("client_api_key").notNull(),
+    providerConnectionId: int("providerConnectionId").references(() => clientAiConnections.id, { onDelete: "set null" }),
+    workflowMode: mysqlEnum("workflowMode", ["auto_reply", "draft_for_approval", "handoff_only"]).default("draft_for_approval").notNull(),
+    systemInstructions: text("systemInstructions"),
+    businessHoursJson: text("businessHoursJson"),
+    handoffKeywordsJson: text("handoffKeywordsJson"),
+    monthlyManagedMessageLimit: int("monthlyManagedMessageLimit"),
+    managedAiCostPerThousandCents: int("managedAiCostPerThousandCents"),
+    managedAiMarkupPercent: int("managedAiMarkupPercent"),
+    managedAiOveragePricePerThousandCents: int("managedAiOveragePricePerThousandCents"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("whatsapp_ai_policies_client_unique").on(table.clientId),
+    index("whatsapp_ai_policies_owner_idx").on(table.ownerUserId),
+  ],
+);
+
+export const whatsappContacts = mysqlTable(
+  "whatsapp_contacts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    phoneE164: varchar("phoneE164", { length: 32 }).notNull(),
+    displayName: varchar("displayName", { length: 220 }),
+    optInStatus: mysqlEnum("optInStatus", ["unknown", "opted_in", "opted_out"]).default("unknown").notNull(),
+    optedInAt: timestamp("optedInAt"),
+    optedOutAt: timestamp("optedOutAt"),
+    lastInboundAt: timestamp("lastInboundAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("whatsapp_contacts_client_phone_unique").on(table.clientId, table.phoneE164),
+    index("whatsapp_contacts_client_optin_idx").on(table.clientId, table.optInStatus),
+  ],
+);
+
+export const whatsappConversations = mysqlTable(
+  "whatsapp_conversations",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    channelId: int("channelId").notNull().references(() => whatsappChannels.id, { onDelete: "cascade" }),
+    contactId: int("contactId").notNull().references(() => whatsappContacts.id, { onDelete: "cascade" }),
+    assignedOperatorId: int("assignedOperatorId").references(() => operators.id, { onDelete: "set null" }),
+    status: mysqlEnum("status", ["ai_active", "waiting_human", "human_active", "closed"]).default("ai_active").notNull(),
+    lastMessagePreview: varchar("lastMessagePreview", { length: 300 }),
+    lastMessageAt: timestamp("lastMessageAt"),
+    serviceWindowExpiresAt: timestamp("serviceWindowExpiresAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("whatsapp_conversations_channel_contact_unique").on(table.channelId, table.contactId),
+    index("whatsapp_conversations_client_status_updated_idx").on(table.clientId, table.status, table.updatedAt),
+    index("whatsapp_conversations_operator_status_idx").on(table.assignedOperatorId, table.status),
+  ],
+);
+
+export const whatsappMessages = mysqlTable(
+  "whatsapp_messages",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    channelId: int("channelId").notNull().references(() => whatsappChannels.id, { onDelete: "cascade" }),
+    conversationId: int("conversationId").notNull().references(() => whatsappConversations.id, { onDelete: "cascade" }),
+    providerMessageId: varchar("providerMessageId", { length: 300 }),
+    direction: mysqlEnum("direction", ["inbound", "outbound"]).notNull(),
+    authorType: mysqlEnum("authorType", ["contact", "ai", "human", "system"]).notNull(),
+    body: text("body"),
+    mediaUrl: varchar("mediaUrl", { length: 1200 }),
+    templateName: varchar("templateName", { length: 180 }),
+    deliveryStatus: mysqlEnum("deliveryStatus", ["received", "queued", "sent", "delivered", "read", "failed"]).default("received").notNull(),
+    providerPayloadJson: text("providerPayloadJson"),
+    occurredAt: timestamp("occurredAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("whatsapp_messages_provider_message_unique").on(table.providerMessageId),
+    index("whatsapp_messages_conversation_occurred_idx").on(table.conversationId, table.occurredAt),
+    index("whatsapp_messages_client_direction_idx").on(table.clientId, table.direction),
+  ],
+);
+
+/** Eventos brutos de webhook para idempotência, rastreabilidade e reprocessamento controlado. */
+export const whatsappWebhookEvents = mysqlTable(
+  "whatsapp_webhook_events",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    channelId: int("channelId").references(() => whatsappChannels.id, { onDelete: "set null" }),
+    provider: mysqlEnum("provider", ["meta_cloud", "twilio"]).notNull(),
+    externalEventId: varchar("externalEventId", { length: 300 }).notNull(),
+    processingStatus: mysqlEnum("processingStatus", ["received", "processed", "ignored", "failed"]).default("received").notNull(),
+    payloadJson: text("payloadJson").notNull(),
+    errorMessage: text("errorMessage"),
+    receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+    processedAt: timestamp("processedAt"),
+  },
+  table => [
+    uniqueIndex("whatsapp_webhook_events_provider_event_unique").on(table.provider, table.externalEventId),
+    index("whatsapp_webhook_events_channel_status_idx").on(table.channelId, table.processingStatus),
+  ],
+);
+
+/** Registro de cada resposta gerada para auditoria, limite da IA VERTEX e telemetria por cliente. */
+export const whatsappAiRuns = mysqlTable(
+  "whatsapp_ai_runs",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    channelId: int("channelId").notNull().references(() => whatsappChannels.id, { onDelete: "cascade" }),
+    conversationId: int("conversationId").notNull().references(() => whatsappConversations.id, { onDelete: "cascade" }),
+    sourceMessageId: int("sourceMessageId").references(() => whatsappMessages.id, { onDelete: "set null" }),
+    resultMessageId: int("resultMessageId").references(() => whatsappMessages.id, { onDelete: "set null" }),
+    billingMode: mysqlEnum("billingMode", ["client_api_key", "vertex_managed"]).notNull(),
+    provider: varchar("provider", { length: 80 }).notNull(),
+    model: varchar("model", { length: 180 }).notNull(),
+    status: mysqlEnum("status", ["queued", "drafted", "sent", "failed", "blocked"]).default("queued").notNull(),
+    inputTokens: int("inputTokens"),
+    outputTokens: int("outputTokens"),
+    totalTokens: int("totalTokens"),
+    requestDurationMs: int("requestDurationMs"),
+    errorMessage: text("errorMessage"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    completedAt: timestamp("completedAt"),
+  },
+  table => [
+    index("whatsapp_ai_runs_client_created_idx").on(table.clientId, table.createdAt),
+    index("whatsapp_ai_runs_conversation_idx").on(table.conversationId),
+    index("whatsapp_ai_runs_status_idx").on(table.status),
+  ],
+);
+
+/** Regras explícitas de automação por cliente; podem sugerir, escalar ou responder conforme a política de IA. */
+export const whatsappAutomationRules = mysqlTable(
+  "whatsapp_automation_rules",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    channelId: int("channelId").references(() => whatsappChannels.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    triggerType: mysqlEnum("triggerType", ["inbound_message", "keyword", "outside_business_hours", "handoff_requested"]).notNull(),
+    triggerConfigJson: text("triggerConfigJson"),
+    actionType: mysqlEnum("actionType", ["ai_reply", "draft_for_approval", "handoff_human", "tag_conversation"]).notNull(),
+    actionConfigJson: text("actionConfigJson"),
+    requiresApproval: int("requiresApproval").default(1).notNull(),
+    priority: int("priority").default(100).notNull(),
+    status: mysqlEnum("status", ["draft", "active", "paused"]).default("draft").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("whatsapp_automation_rules_client_status_idx").on(table.clientId, table.status, table.priority),
+    index("whatsapp_automation_rules_channel_trigger_idx").on(table.channelId, table.triggerType),
+  ],
+);
+
+/** Execuções auditáveis de automação, sem confundir sugestão de IA com resposta já enviada. */
+export const whatsappAutomationExecutions = mysqlTable(
+  "whatsapp_automation_executions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    channelId: int("channelId").notNull().references(() => whatsappChannels.id, { onDelete: "cascade" }),
+    conversationId: int("conversationId").notNull().references(() => whatsappConversations.id, { onDelete: "cascade" }),
+    sourceMessageId: int("sourceMessageId").references(() => whatsappMessages.id, { onDelete: "set null" }),
+    automationRuleId: int("automationRuleId").references(() => whatsappAutomationRules.id, { onDelete: "set null" }),
+    status: mysqlEnum("status", ["queued", "executed", "skipped", "blocked", "failed"]).default("queued").notNull(),
+    decisionReason: text("decisionReason"),
+    outputJson: text("outputJson"),
+    executedAt: timestamp("executedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("whatsapp_automation_execution_message_rule_unique").on(table.sourceMessageId, table.automationRuleId),
+    index("whatsapp_automation_exec_conversation_idx").on(table.conversationId, table.createdAt),
+    index("whatsapp_automation_exec_rule_status_idx").on(table.automationRuleId, table.status),
+  ],
+);
+
+export const saasPlans = mysqlTable(
+  "saas_plans",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    code: varchar("code", { length: 80 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    annualPriceCents: int("annualPriceCents").notNull(),
+    stripePriceId: varchar("stripePriceId", { length: 255 }),
+    includedChannels: int("includedChannels").default(1).notNull(),
+    includedHumanSeats: int("includedHumanSeats").default(1).notNull(),
+    includedManagedAiMessages: int("includedManagedAiMessages").default(0).notNull(),
+    managedAiCostPerThousandCents: int("managedAiCostPerThousandCents").default(0).notNull(),
+    managedAiMarkupPercent: int("managedAiMarkupPercent").default(0).notNull(),
+    managedAiOveragePricePerThousandCents: int("managedAiOveragePricePerThousandCents").default(0).notNull(),
+    isActive: int("isActive").default(1).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [uniqueIndex("saas_plans_owner_code_unique").on(table.ownerUserId, table.code)],
+);
+
+export const saasSubscriptions = mysqlTable(
+  "saas_subscriptions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    planId: int("planId").references(() => saasPlans.id, { onDelete: "set null" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    billingProvider: mysqlEnum("billingProvider", ["stripe", "manual"]).default("manual").notNull(),
+    externalSubscriptionId: varchar("externalSubscriptionId", { length: 255 }),
+    stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
+    stripePriceId: varchar("stripePriceId", { length: 255 }),
+    status: mysqlEnum("status", ["trialing", "active", "past_due", "paused", "canceled", "expired"]).default("trialing").notNull(),
+    interval: mysqlEnum("interval", ["annual"]).default("annual").notNull(),
+    managedAiAddOn: int("managedAiAddOn").default(0).notNull(),
+    managedAiMonthlyLimit: int("managedAiMonthlyLimit").default(0).notNull(),
+    currentPeriodStart: timestamp("currentPeriodStart"),
+    currentPeriodEnd: timestamp("currentPeriodEnd"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("saas_subscriptions_client_unique").on(table.clientId),
+    index("saas_subscriptions_owner_status_idx").on(table.ownerUserId, table.status),
+  ],
+);
+
+export const whatsappAuditLogs = mysqlTable(
+  "whatsapp_audit_logs",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    actorUserId: int("actorUserId").references(() => users.id, { onDelete: "set null" }),
+    action: varchar("action", { length: 160 }).notNull(),
+    entityType: varchar("entityType", { length: 80 }).notNull(),
+    entityId: int("entityId"),
+    detailsJson: text("detailsJson"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("whatsapp_audit_logs_client_created_idx").on(table.clientId, table.createdAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Client = typeof clients.$inferSelect;
@@ -479,3 +780,16 @@ export type ContentBrief = typeof contentBriefs.$inferSelect;
 export type TrendSignal = typeof trendSignals.$inferSelect;
 export type VideoScript = typeof videoScripts.$inferSelect;
 export type StrategyDecision = typeof strategyDecisions.$inferSelect;
+export type ClientPortalMember = typeof clientPortalMembers.$inferSelect;
+export type WhatsappChannel = typeof whatsappChannels.$inferSelect;
+export type WhatsappAiPolicy = typeof whatsappAiPolicies.$inferSelect;
+export type WhatsappContact = typeof whatsappContacts.$inferSelect;
+export type WhatsappConversation = typeof whatsappConversations.$inferSelect;
+export type WhatsappMessage = typeof whatsappMessages.$inferSelect;
+export type WhatsappWebhookEvent = typeof whatsappWebhookEvents.$inferSelect;
+export type WhatsappAiRun = typeof whatsappAiRuns.$inferSelect;
+export type WhatsappAutomationRule = typeof whatsappAutomationRules.$inferSelect;
+export type WhatsappAutomationExecution = typeof whatsappAutomationExecutions.$inferSelect;
+export type SaasPlan = typeof saasPlans.$inferSelect;
+export type SaasSubscription = typeof saasSubscriptions.$inferSelect;
+export type WhatsappAuditLog = typeof whatsappAuditLogs.$inferSelect;

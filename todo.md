@@ -125,3 +125,35 @@
 - [x] Confirmar em teste a orientação de valor mensal válido e a faixa exibida no controle.
 - [x] Garantir que o contador mensal do limite use o mês-calendário corrente para todos os filtros de período.
 - [x] Cobrir no contrato a remoção explícita do limite mensal por valor nulo.
+- [x] Definir a arquitetura multicliente de atendimento por WhatsApp com IA, incluindo isolamento de clientes, papéis e limites operacionais.
+- [x] Modelar canais WhatsApp, contatos, conversas, mensagens, automações, auditoria, planos anuais e assinaturas.
+- [ ] Integrar o provedor oficial de WhatsApp, recebimento seguro de webhooks e envio de mensagens com regras de consentimento.
+- [x] Oferecer escolha por cliente entre chave própria de IA e IA gerenciada pela VERTEX com controle de consumo e margens.
+- [x] Criar painéis de administração de canais, IA, caixa de entrada, escalonamento humano e histórico de conversas.
+- [x] Preparar cobrança anual, limites por plano e ciclo de assinatura SaaS sem expor dados de pagamento.
+- [x] Cobrir isolamento multicliente, autorização, webhooks, consumo e fluxos de atendimento em testes e documentação.
+- [x] Permitir que cada organização escolha, mantenha e troque entre o conector oficial da Meta e um conector BSP compatível, sem misturar credenciais ou conversas.
+- [x] Modelar adaptadores de canal para que o atendimento, a caixa de entrada e a automação funcionem de forma uniforme nos dois modos de WhatsApp.
+- [x] Inserir posteriormente os segredos globais da Meta e credenciais por canal para habilitar tráfego real, mantendo o módulo em modo de configuração até essa etapa.
+- [x] Documentar de forma verificável a arquitetura multicliente de WhatsApp e IA, incluindo papéis, isolamento, limites e os modos Meta/BSP.
+- [x] Modelar explicitamente automações de atendimento com gatilhos, regras, handoff, aprovação e estado, cobrindo persistência e isolamento em testes.
+- [x] Criar contratos protegidos para listar conversas e mensagens, assumir handoff humano e registrar respostas como rascunho sem envio externo.
+- [x] Construir uma caixa de entrada por cliente com linha do tempo, estados de escalonamento e ação de revisão humana.
+- [x] Adicionar no modelo SaaS preço incluído, custo base, markup e excedente por mensagem para IA VERTEX, com persistência por plano ou cliente.
+- [x] Expor contratos protegidos e UI de margem para IA VERTEX, incluindo simulação de consumo e custo sem revelar credenciais.
+- [x] Restringir custo base e markup da IA VERTEX à operação da agência, mantendo para clientes apenas limites, consumo e preços comerciais autorizados.
+- [x] Criar checkout anual por plano e cliente, com metadados mínimos para associar o retorno Stripe ao workspace correto.
+- [x] Processar webhooks Stripe com assinatura verificada e persistir apenas identificadores de cliente, assinatura e preço necessários ao SaaS.
+- [x] Cobrir em teste os eventos de teste Stripe e o mapeamento mínimo de identificadores de checkout anual.
+- [x] Disponibilizar gestão administrativa de planos anuais e ativação de checkout sem criar cobranças automaticamente.
+- [x] Cobrir em teste os textos de plano anual, a formatação comercial e o bloqueio de checkout sem preço Stripe vinculado.
+- [x] Associar usuários de cliente ao respectivo cliente e ao workspace, com papel de acesso explícito e revogável.
+- [x] Criar visão do cliente para acompanhar canais, consumo, assinatura e conversas próprias sem expor margem, custos, credenciais ou outros clientes.
+- [x] Cobrir em teste o bloqueio de leitura e operação entre clientes e entre a visão do cliente e a administração da agência.
+- [x] Avaliar regras de automação ao receber uma mensagem, mantendo o primeiro modo em rascunho revisável ou handoff enquanto não houver credencial e consentimento válidos.
+- [x] Persistir execuções de automação com idempotência, estado, motivo de bloqueio e vínculo à conversa, sem enviar mensagens externas automaticamente.
+- [x] Cobrir em teste gatilho, pausa por credencial/consentimento ausente, handoff e idempotência de execuções de automação.
+- [x] Adicionar testes dedicados aos handlers públicos de webhook Meta e Twilio, cobrindo assinatura inválida, idempotência e ingestão bem-sucedida.
+- [x] Permitir atualizar ou trocar o provedor de um canal existente sem expor credenciais nem misturar conversas de clientes distintos.
+- [x] Adicionar cenários explícitos de teste para bloqueio entre clientes e entre o portal do cliente e a administração da agência.
+- [x] Documentar a cobertura complementar de webhooks, troca de conectores e isolamento multicliente.

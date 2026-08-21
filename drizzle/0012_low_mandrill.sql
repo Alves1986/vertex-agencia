@@ -1,0 +1,1 @@
+ALTER TABLE `whatsapp_automation_executions` ADD CONSTRAINT `whatsapp_automation_execution_message_rule_unique` UNIQUE(`sourceMessageId`,`automationRuleId`);

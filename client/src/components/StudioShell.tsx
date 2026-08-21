@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { Bell, ChevronDown, LayoutDashboard, ListFilter, Loader2, Plus, SlidersHorizontal, Sparkles, SquareKanban, UsersRound, Workflow, WandSparkles } from "lucide-react";
+import { Bell, ChevronDown, LayoutDashboard, ListFilter, Loader2, MessageCircleMore, Plus, SlidersHorizontal, Sparkles, SquareKanban, UsersRound, Workflow, WandSparkles } from "lucide-react";
 import { getNotificationTarget } from "@/lib/notificationTarget";
 import React, { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -15,6 +15,7 @@ const links = [
   { href: "/projetos", label: "Projetos", icon: SquareKanban },
   { href: "/producao", label: "Produção", icon: Workflow },
   { href: "/agencia", label: "Agência IA", icon: WandSparkles },
+  { href: "/atendimento", label: "Atendimento", icon: MessageCircleMore },
 ];
 
 function isActive(pathname: string, href: string) {

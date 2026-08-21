@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, like, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, like, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   adCampaigns,
@@ -9,6 +9,7 @@ import {
   creativeVersions,
   clientAgencyProfiles,
   clientAiConnections,
+  clientPortalMembers,
   clients,
   contentBriefs,
   InsertUser,
@@ -17,6 +18,8 @@ import {
   originalAppConnections,
   projectArtifacts,
   projects,
+  saasPlans,
+  saasSubscriptions,
   strategyDecisions,
   tasks,
   teams,
@@ -24,12 +27,29 @@ import {
   userDashboardPreferences,
   users,
   videoScripts,
+  whatsappAuditLogs,
+  whatsappAiPolicies,
+  whatsappAiRuns,
+  whatsappAutomationExecutions,
+  whatsappAutomationRules,
+  whatsappChannels,
+  whatsappContacts,
+  whatsappConversations,
+  whatsappMessages,
+  whatsappWebhookEvents,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let testDbOverride: ReturnType<typeof drizzle> | null = null;
+
+/** Disponível exclusivamente para testes unitários; não é usado no runtime da aplicação. */
+export function setDbForTests(database: ReturnType<typeof drizzle> | null) {
+  testDbOverride = database;
+}
 
 export async function getDb() {
+  if (testDbOverride) return testDbOverride;
   if (!_db && process.env.DATABASE_URL) {
     try {
       _db = drizzle(process.env.DATABASE_URL);
@@ -614,6 +634,592 @@ export async function updateClientMonthlyApiCallLimit(userId: number, clientId: 
     .where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId)));
   if (!result[0].affectedRows) throw new Error("Cliente não encontrado neste espaço de trabalho");
   return clientId;
+}
+
+async function assertOwnedWhatsappClient(userId: number, clientId: number) {
+  const db = await requireDb();
+  const owned = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId))).limit(1);
+  if (!owned[0]) throw new Error("Cliente não encontrado neste espaço de trabalho");
+}
+
+export async function listWhatsAppChannels(userId: number, clientId?: number) {
+  const db = await requireDb();
+  if (clientId) await assertOwnedWhatsappClient(userId, clientId);
+  const conditions = [eq(whatsappChannels.ownerUserId, userId)];
+  if (clientId) conditions.push(eq(whatsappChannels.clientId, clientId));
+  return db.select({
+    id: whatsappChannels.id,
+    clientId: whatsappChannels.clientId,
+    label: whatsappChannels.label,
+    provider: whatsappChannels.provider,
+    status: whatsappChannels.status,
+    displayPhoneNumber: whatsappChannels.displayPhoneNumber,
+    externalAccountId: whatsappChannels.externalAccountId,
+    externalSenderId: whatsappChannels.externalSenderId,
+    configHint: whatsappChannels.configHint,
+    verifiedAt: whatsappChannels.verifiedAt,
+    lastInboundAt: whatsappChannels.lastInboundAt,
+    lastOutboundAt: whatsappChannels.lastOutboundAt,
+    lastError: whatsappChannels.lastError,
+    createdAt: whatsappChannels.createdAt,
+    updatedAt: whatsappChannels.updatedAt,
+  }).from(whatsappChannels).where(and(...conditions)).orderBy(asc(whatsappChannels.label));
+}
+
+export async function createWhatsAppChannel(userId: number, input: { clientId: number; label: string; provider: "meta_cloud" | "twilio"; displayPhoneNumber?: string | null; externalAccountId?: string | null; externalSenderId?: string | null }) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, input.clientId);
+  const [created] = await db.insert(whatsappChannels).values({ ...input, ownerUserId: userId, status: "draft", displayPhoneNumber: input.displayPhoneNumber || null, externalAccountId: input.externalAccountId || null, externalSenderId: input.externalSenderId || null }).$returningId();
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "whatsapp.channel_created", entityType: "whatsapp_channel", entityId: created.id, detailsJson: JSON.stringify({ provider: input.provider, label: input.label }) });
+  return created.id;
+}
+
+/** Troca o adaptador de um canal sem mover conversas entre clientes nem reutilizar segredos do provedor anterior. */
+export async function updateWhatsAppChannelProvider(userId: number, input: { clientId: number; channelId: number; provider: "meta_cloud" | "twilio"; displayPhoneNumber?: string | null; externalAccountId?: string | null; externalSenderId?: string | null }) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, input.clientId);
+  const current = (await db.select({ id: whatsappChannels.id, provider: whatsappChannels.provider }).from(whatsappChannels).where(and(eq(whatsappChannels.id, input.channelId), eq(whatsappChannels.clientId, input.clientId), eq(whatsappChannels.ownerUserId, userId))).limit(1))[0];
+  if (!current) throw new Error("O canal selecionado não pertence a este cliente.");
+  await db.update(whatsappChannels).set({ provider: input.provider, status: "draft", displayPhoneNumber: input.displayPhoneNumber || null, externalAccountId: input.externalAccountId || null, externalSenderId: input.externalSenderId || null, encryptedConfig: null, configHint: null, verifiedAt: null, lastError: null }).where(eq(whatsappChannels.id, input.channelId));
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "whatsapp.channel_provider_changed", entityType: "whatsapp_channel", entityId: input.channelId, detailsJson: JSON.stringify({ previousProvider: current.provider, provider: input.provider, credentialsCleared: true, conversationsPreserved: true, externalDelivery: "disabled" }) });
+  return input.channelId;
+}
+
+export async function getWhatsAppAiPolicy(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, clientId);
+  const rows = await db.select({
+    id: whatsappAiPolicies.id,
+    clientId: whatsappAiPolicies.clientId,
+    aiAccessMode: whatsappAiPolicies.aiAccessMode,
+    providerConnectionId: whatsappAiPolicies.providerConnectionId,
+    workflowMode: whatsappAiPolicies.workflowMode,
+    systemInstructions: whatsappAiPolicies.systemInstructions,
+    businessHoursJson: whatsappAiPolicies.businessHoursJson,
+    handoffKeywordsJson: whatsappAiPolicies.handoffKeywordsJson,
+    monthlyManagedMessageLimit: whatsappAiPolicies.monthlyManagedMessageLimit,
+    managedAiCostPerThousandCents: whatsappAiPolicies.managedAiCostPerThousandCents,
+    managedAiMarkupPercent: whatsappAiPolicies.managedAiMarkupPercent,
+    managedAiOveragePricePerThousandCents: whatsappAiPolicies.managedAiOveragePricePerThousandCents,
+    updatedAt: whatsappAiPolicies.updatedAt,
+  }).from(whatsappAiPolicies).where(and(eq(whatsappAiPolicies.clientId, clientId), eq(whatsappAiPolicies.ownerUserId, userId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertWhatsAppAiPolicy(userId: number, input: { clientId: number; aiAccessMode: "client_api_key" | "vertex_managed"; providerConnectionId?: number | null; workflowMode: "auto_reply" | "draft_for_approval" | "handoff_only"; systemInstructions?: string | null; businessHoursJson?: string | null; handoffKeywordsJson?: string | null; monthlyManagedMessageLimit?: number | null; managedAiCostPerThousandCents?: number | null; managedAiMarkupPercent?: number | null; managedAiOveragePricePerThousandCents?: number | null }) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, input.clientId);
+  const providerConnectionId = input.aiAccessMode === "client_api_key" ? input.providerConnectionId ?? null : null;
+  if (input.aiAccessMode === "client_api_key") {
+    if (!providerConnectionId) throw new Error("Selecione uma conexão de IA ativa do cliente.");
+    const connection = await db.select({ id: clientAiConnections.id }).from(clientAiConnections).where(and(eq(clientAiConnections.id, providerConnectionId), eq(clientAiConnections.clientId, input.clientId), eq(clientAiConnections.ownerUserId, userId), eq(clientAiConnections.status, "active"))).limit(1);
+    if (!connection[0]) throw new Error("A conexão de IA selecionada não pertence ao cliente ou está inativa.");
+  }
+  const vertexPricing = input.aiAccessMode === "vertex_managed" ? {
+    monthlyManagedMessageLimit: input.monthlyManagedMessageLimit ?? null,
+    managedAiCostPerThousandCents: input.managedAiCostPerThousandCents ?? null,
+    managedAiMarkupPercent: input.managedAiMarkupPercent ?? null,
+    managedAiOveragePricePerThousandCents: input.managedAiOveragePricePerThousandCents ?? null,
+  } : {
+    monthlyManagedMessageLimit: null,
+    managedAiCostPerThousandCents: null,
+    managedAiMarkupPercent: null,
+    managedAiOveragePricePerThousandCents: null,
+  };
+  const values = { clientId: input.clientId, ownerUserId: userId, aiAccessMode: input.aiAccessMode, providerConnectionId, workflowMode: input.workflowMode, systemInstructions: input.systemInstructions || null, businessHoursJson: input.businessHoursJson || null, handoffKeywordsJson: input.handoffKeywordsJson || null, ...vertexPricing };
+  const existing = await db.select({ id: whatsappAiPolicies.id }).from(whatsappAiPolicies).where(and(eq(whatsappAiPolicies.clientId, input.clientId), eq(whatsappAiPolicies.ownerUserId, userId))).limit(1);
+  if (existing[0]) {
+    await db.update(whatsappAiPolicies).set(values).where(eq(whatsappAiPolicies.id, existing[0].id));
+    return existing[0].id;
+  }
+  const [created] = await db.insert(whatsappAiPolicies).values(values).$returningId();
+  return created.id;
+}
+
+export type ManagedAiQuoteInput = {
+  currentMonthlyMessages: number;
+  projectedAdditionalMessages: number;
+  includedMonthlyMessages: number;
+  costPerThousandCents: number;
+  markupPercent: number;
+  overagePricePerThousandCents: number;
+};
+
+/** Calcula valores em centavos por mil mensagens, sem expor segredos de provedor. */
+export function calculateManagedAiQuote(input: ManagedAiQuoteInput) {
+  const currentMonthlyMessages = Math.max(0, Math.trunc(input.currentMonthlyMessages));
+  const projectedAdditionalMessages = Math.max(0, Math.trunc(input.projectedAdditionalMessages));
+  const includedMonthlyMessages = Math.max(0, Math.trunc(input.includedMonthlyMessages));
+  const costPerThousandCents = Math.max(0, Math.trunc(input.costPerThousandCents));
+  const markupPercent = Math.max(0, Math.trunc(input.markupPercent));
+  const derivedOveragePrice = Math.ceil((costPerThousandCents * (100 + markupPercent)) / 100);
+  const overagePricePerThousandCents = Math.max(0, Math.trunc(input.overagePricePerThousandCents || derivedOveragePrice));
+  const totalMonthlyMessages = currentMonthlyMessages + projectedAdditionalMessages;
+  const overageMessages = Math.max(0, totalMonthlyMessages - includedMonthlyMessages);
+  const thousands = (messages: number) => Math.ceil(messages / 1000);
+  const projectedCostCents = thousands(totalMonthlyMessages) * costPerThousandCents;
+  const overageCostCents = thousands(overageMessages) * costPerThousandCents;
+  const projectedOverageRevenueCents = thousands(overageMessages) * overagePricePerThousandCents;
+  return {
+    currentMonthlyMessages,
+    projectedAdditionalMessages,
+    includedMonthlyMessages,
+    totalMonthlyMessages,
+    overageMessages,
+    costPerThousandCents,
+    markupPercent,
+    overagePricePerThousandCents,
+    projectedCostCents,
+    projectedOverageRevenueCents,
+    projectedOverageGrossMarginCents: projectedOverageRevenueCents - overageCostCents,
+    annualIncludedCapacityCostCents: thousands(includedMonthlyMessages * 12) * costPerThousandCents,
+  };
+}
+
+export async function getManagedAiBillingOverview(userId: number, clientId: number, projectedAdditionalMessages = 0) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, clientId);
+  const [policy, subscriptionRows, usage] = await Promise.all([
+    getWhatsAppAiPolicy(userId, clientId),
+    db.select({ status: saasSubscriptions.status, managedAiAddOn: saasSubscriptions.managedAiAddOn, managedAiMonthlyLimit: saasSubscriptions.managedAiMonthlyLimit, currentPeriodEnd: saasSubscriptions.currentPeriodEnd, planName: saasPlans.name, annualPriceCents: saasPlans.annualPriceCents, includedManagedAiMessages: saasPlans.includedManagedAiMessages, managedAiCostPerThousandCents: saasPlans.managedAiCostPerThousandCents, managedAiMarkupPercent: saasPlans.managedAiMarkupPercent, managedAiOveragePricePerThousandCents: saasPlans.managedAiOveragePricePerThousandCents }).from(saasSubscriptions).leftJoin(saasPlans, eq(saasPlans.id, saasSubscriptions.planId)).where(and(eq(saasSubscriptions.clientId, clientId), eq(saasSubscriptions.ownerUserId, userId))).limit(1),
+    db.select({ id: whatsappAiRuns.id }).from(whatsappAiRuns).where(and(eq(whatsappAiRuns.clientId, clientId), eq(whatsappAiRuns.billingMode, "vertex_managed"), gte(whatsappAiRuns.createdAt, getCurrentMonthStart()))),
+  ]);
+  const subscription = subscriptionRows[0] ?? null;
+  const quote = calculateManagedAiQuote({
+    currentMonthlyMessages: usage.length,
+    projectedAdditionalMessages,
+    includedMonthlyMessages: policy?.monthlyManagedMessageLimit ?? (subscription?.managedAiMonthlyLimit || subscription?.includedManagedAiMessages || 0),
+    costPerThousandCents: policy?.managedAiCostPerThousandCents ?? subscription?.managedAiCostPerThousandCents ?? 0,
+    markupPercent: policy?.managedAiMarkupPercent ?? subscription?.managedAiMarkupPercent ?? 0,
+    overagePricePerThousandCents: policy?.managedAiOveragePricePerThousandCents ?? subscription?.managedAiOveragePricePerThousandCents ?? 0,
+  });
+  return { aiAccessMode: policy?.aiAccessMode ?? "client_api_key", subscription: subscription ? { status: subscription.status, planName: subscription.planName, annualPriceCents: subscription.annualPriceCents, managedAiAddOn: Boolean(subscription.managedAiAddOn), currentPeriodEnd: subscription.currentPeriodEnd } : null, quote };
+}
+
+export async function getAnnualCheckoutContext(userId: number, clientId: number, planId: number) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, clientId);
+  const [planRows, clientRows] = await Promise.all([
+    db.select({ id: saasPlans.id, code: saasPlans.code, name: saasPlans.name, annualPriceCents: saasPlans.annualPriceCents, stripePriceId: saasPlans.stripePriceId }).from(saasPlans).where(and(eq(saasPlans.id, planId), eq(saasPlans.ownerUserId, userId), eq(saasPlans.isActive, 1))).limit(1),
+    db.select({ id: clients.id, name: clients.name, contactEmail: clients.contactEmail }).from(clients).where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId))).limit(1),
+  ]);
+  if (!planRows[0]) throw new Error("Plano anual ativo não encontrado neste espaço de trabalho.");
+  if (!clientRows[0]) throw new Error("Cliente não encontrado neste espaço de trabalho.");
+  return { plan: planRows[0], client: clientRows[0] };
+}
+
+export async function listAnnualSaasPlans(userId: number) {
+  const db = await requireDb();
+  return db.select({ id: saasPlans.id, code: saasPlans.code, name: saasPlans.name, annualPriceCents: saasPlans.annualPriceCents, stripePriceId: saasPlans.stripePriceId, includedChannels: saasPlans.includedChannels, includedHumanSeats: saasPlans.includedHumanSeats, includedManagedAiMessages: saasPlans.includedManagedAiMessages, managedAiOveragePricePerThousandCents: saasPlans.managedAiOveragePricePerThousandCents, isActive: saasPlans.isActive }).from(saasPlans).where(eq(saasPlans.ownerUserId, userId)).orderBy(asc(saasPlans.name));
+}
+
+export async function upsertAnnualSaasPlan(userId: number, input: { id?: number; code: string; name: string; annualPriceCents: number; stripePriceId?: string | null; includedChannels: number; includedHumanSeats: number; includedManagedAiMessages: number; managedAiCostPerThousandCents: number; managedAiMarkupPercent: number; managedAiOveragePricePerThousandCents: number; isActive: boolean }) {
+  const db = await requireDb();
+  const values = { code: input.code, name: input.name, annualPriceCents: input.annualPriceCents, stripePriceId: input.stripePriceId || null, includedChannels: input.includedChannels, includedHumanSeats: input.includedHumanSeats, includedManagedAiMessages: input.includedManagedAiMessages, managedAiCostPerThousandCents: input.managedAiCostPerThousandCents, managedAiMarkupPercent: input.managedAiMarkupPercent, managedAiOveragePricePerThousandCents: input.managedAiOveragePricePerThousandCents, isActive: input.isActive ? 1 : 0 };
+  if (input.id) {
+    const existing = await db.select({ id: saasPlans.id }).from(saasPlans).where(and(eq(saasPlans.id, input.id), eq(saasPlans.ownerUserId, userId))).limit(1);
+    if (!existing[0]) throw new Error("Plano anual não encontrado neste espaço de trabalho.");
+    await db.update(saasPlans).set(values).where(eq(saasPlans.id, existing[0].id));
+    return existing[0].id;
+  }
+  const result = await db.insert(saasPlans).values({ ownerUserId: userId, ...values });
+  return Number(result[0].insertId);
+}
+
+/** Mantém identificadores Stripe e um cache operacional de entitlement; nenhum dado de cartão, fatura ou payload é armazenado. */
+export async function upsertStripeSubscriptionReference(input: { ownerUserId: number; clientId: number; planId: number; stripeCustomerId: string | null; externalSubscriptionId: string; stripePriceId: string | null; status: "trialing" | "active" | "past_due" | "paused" | "canceled" | "expired" }) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(input.ownerUserId, input.clientId);
+  const plan = await db.select({ id: saasPlans.id }).from(saasPlans).where(and(eq(saasPlans.id, input.planId), eq(saasPlans.ownerUserId, input.ownerUserId))).limit(1);
+  if (!plan[0]) throw new Error("Plano anual não pertence a este espaço de trabalho.");
+  const values = { planId: input.planId, billingProvider: "stripe" as const, stripeCustomerId: input.stripeCustomerId, externalSubscriptionId: input.externalSubscriptionId, stripePriceId: input.stripePriceId, status: input.status };
+  const existing = await db.select({ id: saasSubscriptions.id }).from(saasSubscriptions).where(and(eq(saasSubscriptions.clientId, input.clientId), eq(saasSubscriptions.ownerUserId, input.ownerUserId))).limit(1);
+  if (existing[0]) await db.update(saasSubscriptions).set(values).where(eq(saasSubscriptions.id, existing[0].id));
+  else await db.insert(saasSubscriptions).values({ clientId: input.clientId, ownerUserId: input.ownerUserId, ...values });
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: input.ownerUserId, action: "saas.stripe_subscription_synced", entityType: "saas_subscription", entityId: existing[0]?.id ?? null, detailsJson: JSON.stringify({ planId: input.planId, status: input.status, event: "stripe_sync" }) });
+}
+
+export async function listWhatsAppAutomationRules(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, clientId);
+  return db.select().from(whatsappAutomationRules).where(and(eq(whatsappAutomationRules.clientId, clientId), eq(whatsappAutomationRules.ownerUserId, userId))).orderBy(asc(whatsappAutomationRules.priority), asc(whatsappAutomationRules.name));
+}
+
+export async function upsertWhatsAppAutomationRule(userId: number, input: { id?: number; clientId: number; channelId?: number | null; name: string; triggerType: "inbound_message" | "keyword" | "outside_business_hours" | "handoff_requested"; triggerConfigJson?: string | null; actionType: "ai_reply" | "draft_for_approval" | "handoff_human" | "tag_conversation"; actionConfigJson?: string | null; requiresApproval: boolean; priority: number; status: "draft" | "active" | "paused" }) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, input.clientId);
+  if (input.channelId) {
+    const channel = await db.select({ id: whatsappChannels.id }).from(whatsappChannels).where(and(eq(whatsappChannels.id, input.channelId), eq(whatsappChannels.clientId, input.clientId), eq(whatsappChannels.ownerUserId, userId))).limit(1);
+    if (!channel[0]) throw new Error("O canal selecionado não pertence a este cliente.");
+  }
+  const values = { clientId: input.clientId, ownerUserId: userId, channelId: input.channelId ?? null, name: input.name, triggerType: input.triggerType, triggerConfigJson: input.triggerConfigJson || null, actionType: input.actionType, actionConfigJson: input.actionConfigJson || null, requiresApproval: input.requiresApproval ? 1 : 0, priority: input.priority, status: input.status };
+  if (input.id) {
+    const existing = await db.select({ id: whatsappAutomationRules.id }).from(whatsappAutomationRules).where(and(eq(whatsappAutomationRules.id, input.id), eq(whatsappAutomationRules.clientId, input.clientId), eq(whatsappAutomationRules.ownerUserId, userId))).limit(1);
+    if (!existing[0]) throw new Error("Regra de automação não encontrada neste cliente.");
+    await db.update(whatsappAutomationRules).set(values).where(eq(whatsappAutomationRules.id, input.id));
+    return input.id;
+  }
+  const [created] = await db.insert(whatsappAutomationRules).values(values).$returningId();
+  return created.id;
+}
+
+export async function getWhatsAppChannelSecret(channelId: number) {
+  const db = await requireDb();
+  const rows = await db.select().from(whatsappChannels).where(eq(whatsappChannels.id, channelId)).limit(1);
+  return rows[0];
+}
+
+export async function recordWhatsAppWebhookEvent(input: {
+  channelId: number | null;
+  provider: "meta_cloud" | "twilio";
+  externalEventId: string;
+  payloadJson: string;
+}) {
+  const db = await requireDb();
+  const existing = await db
+    .select({ id: whatsappWebhookEvents.id })
+    .from(whatsappWebhookEvents)
+    .where(and(eq(whatsappWebhookEvents.provider, input.provider), eq(whatsappWebhookEvents.externalEventId, input.externalEventId)))
+    .limit(1);
+  if (existing[0]) return { id: existing[0].id, duplicate: true };
+  try {
+    const [created] = await db.insert(whatsappWebhookEvents).values(input).$returningId();
+    return { id: created.id, duplicate: false };
+  } catch (error) {
+    const duplicate = await db
+      .select({ id: whatsappWebhookEvents.id })
+      .from(whatsappWebhookEvents)
+      .where(and(eq(whatsappWebhookEvents.provider, input.provider), eq(whatsappWebhookEvents.externalEventId, input.externalEventId)))
+      .limit(1);
+    if (duplicate[0]) return { id: duplicate[0].id, duplicate: true };
+    throw error;
+  }
+}
+
+export async function markWhatsAppWebhookEvent(eventId: number, processingStatus: "processed" | "ignored" | "failed", errorMessage?: string | null) {
+  const db = await requireDb();
+  await db.update(whatsappWebhookEvents).set({ processingStatus, errorMessage: errorMessage ?? null, processedAt: new Date() }).where(eq(whatsappWebhookEvents.id, eventId));
+}
+
+export async function ingestInboundWhatsAppMessage(input: {
+  channelId: number;
+  clientId: number;
+  sender: string;
+  providerMessageId: string;
+  body: string | null;
+  occurredAt: Date;
+  rawPayloadJson: string;
+}) {
+  const db = await requireDb();
+  let contact = (await db.select().from(whatsappContacts).where(and(eq(whatsappContacts.clientId, input.clientId), eq(whatsappContacts.phoneE164, input.sender))).limit(1))[0];
+  if (!contact) {
+    const [created] = await db.insert(whatsappContacts).values({ clientId: input.clientId, phoneE164: input.sender, optInStatus: "unknown", lastInboundAt: input.occurredAt }).$returningId();
+    contact = (await db.select().from(whatsappContacts).where(eq(whatsappContacts.id, created.id)).limit(1))[0];
+  } else {
+    await db.update(whatsappContacts).set({ lastInboundAt: input.occurredAt }).where(eq(whatsappContacts.id, contact.id));
+  }
+  let conversation = (await db.select().from(whatsappConversations).where(and(eq(whatsappConversations.channelId, input.channelId), eq(whatsappConversations.contactId, contact.id))).limit(1))[0];
+  if (!conversation) {
+    const [created] = await db.insert(whatsappConversations).values({ clientId: input.clientId, channelId: input.channelId, contactId: contact.id, status: "ai_active", lastMessagePreview: input.body?.slice(0, 300) ?? null, lastMessageAt: input.occurredAt, serviceWindowExpiresAt: new Date(input.occurredAt.getTime() + 24 * 60 * 60 * 1000) }).$returningId();
+    conversation = (await db.select().from(whatsappConversations).where(eq(whatsappConversations.id, created.id)).limit(1))[0];
+  } else {
+    await db.update(whatsappConversations).set({ lastMessagePreview: input.body?.slice(0, 300) ?? null, lastMessageAt: input.occurredAt, serviceWindowExpiresAt: new Date(input.occurredAt.getTime() + 24 * 60 * 60 * 1000) }).where(eq(whatsappConversations.id, conversation.id));
+  }
+  const [message] = await db.insert(whatsappMessages).values({ clientId: input.clientId, channelId: input.channelId, conversationId: conversation.id, providerMessageId: input.providerMessageId, direction: "inbound", authorType: "contact", body: input.body, deliveryStatus: "received", providerPayloadJson: input.rawPayloadJson, occurredAt: input.occurredAt }).$returningId();
+  await Promise.all([
+    db.update(whatsappChannels).set({ lastInboundAt: input.occurredAt }).where(eq(whatsappChannels.id, input.channelId)),
+    db.insert(whatsappAuditLogs).values({ clientId: input.clientId, action: "whatsapp.inbound_received", entityType: "whatsapp_message", entityId: message.id, detailsJson: JSON.stringify({ channelId: input.channelId, providerMessageId: input.providerMessageId }) }),
+  ]);
+  return { contactId: contact.id, conversationId: conversation.id, messageId: message.id };
+}
+
+type AutomationConfig = {
+  keywords?: unknown;
+  keyword?: unknown;
+  draftBody?: unknown;
+  body?: unknown;
+  message?: unknown;
+  start?: unknown;
+  end?: unknown;
+  days?: unknown;
+  weekdays?: unknown;
+  timeZone?: unknown;
+};
+
+function parseAutomationConfig(value: string | null | undefined): AutomationConfig {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as AutomationConfig : {};
+  } catch {
+    return {};
+  }
+}
+
+function configStrings(...values: unknown[]) {
+  return values.flatMap(value => Array.isArray(value) ? value : [value]).filter((value): value is string => typeof value === "string" && value.trim().length > 0).map(value => value.trim().toLocaleLowerCase());
+}
+
+function matchesConfiguredKeyword(body: string | null, ...configs: AutomationConfig[]) {
+  if (!body) return false;
+  const keywords = configs.flatMap(config => configStrings(config.keywords, config.keyword));
+  if (!keywords.length) return false;
+  const normalizedBody = body.toLocaleLowerCase();
+  return keywords.some(keyword => normalizedBody.includes(keyword));
+}
+
+function parseClock(value: unknown) {
+  if (typeof value !== "string" || !/^\d{1,2}:\d{2}$/.test(value)) return null;
+  const [hour, minute] = value.split(":").map(Number);
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+function getBusinessClock(date: Date, timeZone: unknown) {
+  const zone = typeof timeZone === "string" && timeZone ? timeZone : "UTC";
+  try {
+    const values = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+    const valueFor = (type: string) => values.find(part => part.type === type)?.value;
+    const weekday = ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 } as Record<string, number>)[valueFor("weekday") ?? ""];
+    const hour = Number(valueFor("hour"));
+    const minute = Number(valueFor("minute"));
+    if (Number.isFinite(weekday) && Number.isFinite(hour) && Number.isFinite(minute)) return { weekday, minutes: hour * 60 + minute };
+  } catch {
+    // Uma zona inválida não pode tornar a automação mais permissiva; usamos UTC como referência estável.
+  }
+  return { weekday: date.getUTCDay(), minutes: date.getUTCHours() * 60 + date.getUTCMinutes() };
+}
+
+function isOutsideConfiguredBusinessHours(date: Date, config: AutomationConfig) {
+  const start = parseClock(config.start);
+  const end = parseClock(config.end);
+  if (start === null || end === null) return false;
+  const { weekday, minutes } = getBusinessClock(date, config.timeZone);
+  const configuredDays = configStrings(config.days, config.weekdays).map(value => Number(value)).filter(value => Number.isInteger(value) && value >= 0 && value <= 6);
+  const businessDays = configuredDays.length ? configuredDays : [1, 2, 3, 4, 5];
+  if (!businessDays.includes(weekday)) return true;
+  const isWithinHours = start <= end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
+  return !isWithinHours;
+}
+
+function draftBodyForAutomation(ruleName: string, config: AutomationConfig) {
+  const configured = [config.draftBody, config.body, config.message].find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  return configured?.trim() ?? `Rascunho interno criado pela automação “${ruleName}”. Revisão humana obrigatória antes de qualquer envio.`;
+}
+
+async function getExistingAutomationExecution(sourceMessageId: number, automationRuleId: number) {
+  const db = await requireDb();
+  return (await db.select().from(whatsappAutomationExecutions).where(and(eq(whatsappAutomationExecutions.sourceMessageId, sourceMessageId), eq(whatsappAutomationExecutions.automationRuleId, automationRuleId))).limit(1))[0];
+}
+
+async function createAutomationExecution(input: { clientId: number; channelId: number; conversationId: number; sourceMessageId: number; automationRuleId: number }) {
+  const db = await requireDb();
+  const existing = await getExistingAutomationExecution(input.sourceMessageId, input.automationRuleId);
+  if (existing) return { id: existing.id, duplicate: true };
+  try {
+    const [created] = await db.insert(whatsappAutomationExecutions).values({ ...input, status: "queued" }).$returningId();
+    return { id: created.id, duplicate: false };
+  } catch (error) {
+    const duplicate = await getExistingAutomationExecution(input.sourceMessageId, input.automationRuleId);
+    if (duplicate) return { id: duplicate.id, duplicate: true };
+    throw error;
+  }
+}
+
+async function finalizeAutomationExecution(executionId: number, status: "executed" | "skipped" | "blocked" | "failed", decisionReason: string, output?: Record<string, unknown>) {
+  const db = await requireDb();
+  await db.update(whatsappAutomationExecutions).set({ status, decisionReason, outputJson: output ? JSON.stringify(output) : null, executedAt: new Date() }).where(eq(whatsappAutomationExecutions.id, executionId));
+}
+
+/**
+ * Avalia regras ativas para uma mensagem recebida. A execução é idempotente por
+ * mensagem e regra e nunca envia mensagens a provedores externos: respostas são
+ * salvas apenas como rascunho local para revisão humana.
+ */
+export async function evaluateWhatsAppAutomationRules(channelId: number, conversationId: number, messageId: number, clientId: number) {
+  const db = await requireDb();
+  const [message, conversation, contact] = await Promise.all([
+    db.select({ id: whatsappMessages.id, body: whatsappMessages.body, direction: whatsappMessages.direction, occurredAt: whatsappMessages.occurredAt }).from(whatsappMessages).where(and(eq(whatsappMessages.id, messageId), eq(whatsappMessages.clientId, clientId), eq(whatsappMessages.channelId, channelId), eq(whatsappMessages.conversationId, conversationId))).limit(1),
+    db.select({ id: whatsappConversations.id, status: whatsappConversations.status, contactId: whatsappConversations.contactId }).from(whatsappConversations).where(and(eq(whatsappConversations.id, conversationId), eq(whatsappConversations.clientId, clientId), eq(whatsappConversations.channelId, channelId))).limit(1),
+    db.select({ id: whatsappContacts.id, optInStatus: whatsappContacts.optInStatus }).from(whatsappContacts).innerJoin(whatsappConversations, eq(whatsappConversations.contactId, whatsappContacts.id)).where(and(eq(whatsappConversations.id, conversationId), eq(whatsappContacts.clientId, clientId))).limit(1),
+  ]);
+  if (!message[0] || message[0].direction !== "inbound" || !conversation[0] || !contact[0]) throw new Error("A mensagem recebida não pertence ao contexto de automação informado.");
+
+  const [policy, rules] = await Promise.all([
+    db.select().from(whatsappAiPolicies).where(eq(whatsappAiPolicies.clientId, clientId)).limit(1),
+    db.select().from(whatsappAutomationRules).where(and(eq(whatsappAutomationRules.clientId, clientId), eq(whatsappAutomationRules.status, "active"), or(eq(whatsappAutomationRules.channelId, channelId), isNull(whatsappAutomationRules.channelId)))).orderBy(asc(whatsappAutomationRules.priority), asc(whatsappAutomationRules.id)),
+  ]);
+
+  const policyConfig = parseAutomationConfig(policy[0]?.handoffKeywordsJson);
+  const businessHoursConfig = parseAutomationConfig(policy[0]?.businessHoursJson);
+  const results: Array<{ ruleId: number; executionId?: number; status: "executed" | "skipped" | "blocked"; reason: string }> = [];
+
+  for (const rule of rules) {
+    const triggerConfig = parseAutomationConfig(rule.triggerConfigJson);
+    const triggerMatches = rule.triggerType === "inbound_message"
+      || (rule.triggerType === "keyword" && matchesConfiguredKeyword(message[0].body, triggerConfig))
+      || (rule.triggerType === "outside_business_hours" && isOutsideConfiguredBusinessHours(message[0].occurredAt, { ...businessHoursConfig, ...triggerConfig }))
+      || (rule.triggerType === "handoff_requested" && matchesConfiguredKeyword(message[0].body, triggerConfig, policyConfig));
+    if (!triggerMatches) continue;
+
+    const execution = await createAutomationExecution({ clientId, channelId, conversationId, sourceMessageId: messageId, automationRuleId: rule.id });
+    if (execution.duplicate) {
+      results.push({ ruleId: rule.id, executionId: execution.id, status: "skipped", reason: "Execução idempotente já registrada para esta mensagem e regra." });
+      continue;
+    }
+
+    const actionConfig = parseAutomationConfig(rule.actionConfigJson);
+    if (rule.actionType === "handoff_human" || rule.triggerType === "handoff_requested" || policy[0]?.workflowMode === "handoff_only") {
+      await db.update(whatsappConversations).set({ status: "waiting_human" }).where(eq(whatsappConversations.id, conversationId));
+      const reason = rule.triggerType === "handoff_requested" || policy[0]?.workflowMode === "handoff_only" ? "Conversa encaminhada para atendimento humano pela política de handoff." : "Conversa encaminhada para atendimento humano pela automação.";
+      await db.insert(whatsappAuditLogs).values({ clientId, action: "whatsapp.automation_handoff", entityType: "whatsapp_conversation", entityId: conversationId, detailsJson: JSON.stringify({ automationRuleId: rule.id, sourceMessageId: messageId, externalDelivery: "disabled" }) });
+      await finalizeAutomationExecution(execution.id, "executed", reason, { outcome: "handoff", externalDelivery: "disabled" });
+      results.push({ ruleId: rule.id, executionId: execution.id, status: "executed", reason });
+      continue;
+    }
+
+    if (rule.actionType === "ai_reply") {
+      const activeConnection = policy[0]?.aiAccessMode === "client_api_key" && policy[0].providerConnectionId
+        ? (await db.select({ id: clientAiConnections.id, encryptedApiKey: clientAiConnections.encryptedApiKey, status: clientAiConnections.status, lastTestedAt: clientAiConnections.lastTestedAt }).from(clientAiConnections).where(and(eq(clientAiConnections.id, policy[0].providerConnectionId), eq(clientAiConnections.clientId, clientId))).limit(1))[0]
+        : null;
+      const managedSubscription = policy[0]?.aiAccessMode === "vertex_managed"
+        ? (await db.select({ id: saasSubscriptions.id }).from(saasSubscriptions).where(and(eq(saasSubscriptions.clientId, clientId), eq(saasSubscriptions.managedAiAddOn, 1), or(eq(saasSubscriptions.status, "active"), eq(saasSubscriptions.status, "trialing")))).limit(1))[0]
+        : null;
+      const missingCredential = policy[0]?.aiAccessMode === "client_api_key" ? !activeConnection || activeConnection.status !== "active" || !activeConnection.encryptedApiKey || !activeConnection.lastTestedAt : !managedSubscription;
+      if (missingCredential || contact[0].optInStatus !== "opted_in") {
+        const reason = missingCredential ? "Ação bloqueada: não há credencial de IA validada ou assinatura VERTEX ativa para o cliente." : "Ação bloqueada: o contato ainda não possui consentimento explícito para atendimento automatizado.";
+        await finalizeAutomationExecution(execution.id, "blocked", reason, { missingCredential, optInStatus: contact[0].optInStatus, externalDelivery: "disabled" });
+        await db.insert(whatsappAuditLogs).values({ clientId, action: "whatsapp.automation_blocked", entityType: "whatsapp_automation_execution", entityId: execution.id, detailsJson: JSON.stringify({ automationRuleId: rule.id, sourceMessageId: messageId, reason, externalDelivery: "disabled" }) });
+        results.push({ ruleId: rule.id, executionId: execution.id, status: "blocked", reason });
+        continue;
+      }
+    }
+
+    if (rule.actionType === "draft_for_approval" || rule.actionType === "ai_reply") {
+      const [draft] = await db.insert(whatsappMessages).values({ clientId, channelId, conversationId, direction: "outbound", authorType: "ai", body: draftBodyForAutomation(rule.name, actionConfig), deliveryStatus: "queued" }).$returningId();
+      const reason = "Rascunho interno criado para revisão humana; a entrega externa permanece desabilitada.";
+      await db.insert(whatsappAuditLogs).values({ clientId, action: "whatsapp.automation_draft_created", entityType: "whatsapp_message", entityId: draft.id, detailsJson: JSON.stringify({ automationRuleId: rule.id, sourceMessageId: messageId, externalDelivery: "disabled" }) });
+      await finalizeAutomationExecution(execution.id, "executed", reason, { outcome: "draft", draftMessageId: draft.id, externalDelivery: "disabled" });
+      results.push({ ruleId: rule.id, executionId: execution.id, status: "executed", reason });
+      continue;
+    }
+
+    const reason = "Regra registrada sem ação externa: a marcação de conversa exige uma taxonomia própria antes de ser aplicada.";
+    await finalizeAutomationExecution(execution.id, "skipped", reason, { outcome: "tag_not_configured", externalDelivery: "disabled" });
+    results.push({ ruleId: rule.id, executionId: execution.id, status: "skipped", reason });
+  }
+
+  return results;
+}
+
+async function assertOwnedWhatsAppConversation(userId: number, clientId: number, conversationId: number) {
+  await assertOwnedWhatsappClient(userId, clientId);
+  const db = await requireDb();
+  const rows = await db.select({ id: whatsappConversations.id, channelId: whatsappConversations.channelId, assignedOperatorId: whatsappConversations.assignedOperatorId }).from(whatsappConversations).innerJoin(whatsappChannels, eq(whatsappChannels.id, whatsappConversations.channelId)).where(and(eq(whatsappConversations.id, conversationId), eq(whatsappConversations.clientId, clientId), eq(whatsappChannels.ownerUserId, userId))).limit(1);
+  if (!rows[0]) throw new Error("A conversa solicitada não pertence ao cliente atual.");
+  return rows[0];
+}
+
+export async function listWhatsAppInbox(userId: number, clientId: number) {
+  await assertOwnedWhatsappClient(userId, clientId);
+  const db = await requireDb();
+  return db.select({
+    id: whatsappConversations.id,
+    channelId: whatsappConversations.channelId,
+    contactId: whatsappConversations.contactId,
+    assignedOperatorId: whatsappConversations.assignedOperatorId,
+    status: whatsappConversations.status,
+    lastMessagePreview: whatsappConversations.lastMessagePreview,
+    lastMessageAt: whatsappConversations.lastMessageAt,
+    serviceWindowExpiresAt: whatsappConversations.serviceWindowExpiresAt,
+    updatedAt: whatsappConversations.updatedAt,
+    contactName: whatsappContacts.displayName,
+    contactPhone: whatsappContacts.phoneE164,
+    optInStatus: whatsappContacts.optInStatus,
+    channelLabel: whatsappChannels.label,
+    channelProvider: whatsappChannels.provider,
+  }).from(whatsappConversations).innerJoin(whatsappContacts, eq(whatsappContacts.id, whatsappConversations.contactId)).innerJoin(whatsappChannels, eq(whatsappChannels.id, whatsappConversations.channelId)).where(and(eq(whatsappConversations.clientId, clientId), eq(whatsappChannels.ownerUserId, userId))).orderBy(desc(whatsappConversations.lastMessageAt), desc(whatsappConversations.updatedAt));
+}
+
+export async function listWhatsAppConversationMessages(userId: number, clientId: number, conversationId: number) {
+  await assertOwnedWhatsAppConversation(userId, clientId, conversationId);
+  const db = await requireDb();
+  return db.select({ id: whatsappMessages.id, direction: whatsappMessages.direction, authorType: whatsappMessages.authorType, body: whatsappMessages.body, mediaUrl: whatsappMessages.mediaUrl, templateName: whatsappMessages.templateName, deliveryStatus: whatsappMessages.deliveryStatus, occurredAt: whatsappMessages.occurredAt, providerMessageId: whatsappMessages.providerMessageId }).from(whatsappMessages).where(and(eq(whatsappMessages.clientId, clientId), eq(whatsappMessages.conversationId, conversationId))).orderBy(asc(whatsappMessages.occurredAt));
+}
+
+export async function activateWhatsAppHumanHandoff(userId: number, clientId: number, conversationId: number) {
+  await assertOwnedWhatsAppConversation(userId, clientId, conversationId);
+  const db = await requireDb();
+  await db.update(whatsappConversations).set({ status: "human_active" }).where(and(eq(whatsappConversations.id, conversationId), eq(whatsappConversations.clientId, clientId)));
+  await db.insert(whatsappAuditLogs).values({ clientId, actorUserId: userId, action: "whatsapp.handoff_claimed", entityType: "whatsapp_conversation", entityId: conversationId, detailsJson: JSON.stringify({ delivery: "human_review" }) });
+  return conversationId;
+}
+
+export async function createWhatsAppDraft(userId: number, input: { clientId: number; conversationId: number; body: string }) {
+  const conversation = await assertOwnedWhatsAppConversation(userId, input.clientId, input.conversationId);
+  const db = await requireDb();
+  const [created] = await db.insert(whatsappMessages).values({ clientId: input.clientId, channelId: conversation.channelId, conversationId: input.conversationId, direction: "outbound", authorType: "human", body: input.body, deliveryStatus: "queued" }).$returningId();
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "whatsapp.draft_created", entityType: "whatsapp_message", entityId: created.id, detailsJson: JSON.stringify({ externalDelivery: "disabled" }) });
+  return created.id;
+}
+
+export async function listClientPortalMembers(ownerUserId: number, clientId: number) {
+  await assertOwnedWhatsappClient(ownerUserId, clientId);
+  const db = await requireDb();
+  return db.select({ id: clientPortalMembers.id, userId: clientPortalMembers.userId, name: users.name, email: users.email, role: clientPortalMembers.role, status: clientPortalMembers.status, createdAt: clientPortalMembers.createdAt, updatedAt: clientPortalMembers.updatedAt }).from(clientPortalMembers).innerJoin(users, eq(users.id, clientPortalMembers.userId)).where(eq(clientPortalMembers.clientId, clientId)).orderBy(asc(users.name));
+}
+
+export async function grantClientPortalMember(ownerUserId: number, input: { clientId: number; email: string; role: "client_admin" | "manager" | "agent" | "viewer" }) {
+  await assertOwnedWhatsappClient(ownerUserId, input.clientId);
+  const db = await requireDb();
+  const targetUser = (await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1))[0];
+  if (!targetUser) throw new Error("A pessoa precisa acessar a VERTEX ao menos uma vez antes de receber acesso ao portal.");
+  await db.insert(clientPortalMembers).values({ clientId: input.clientId, userId: targetUser.id, invitedByUserId: ownerUserId, role: input.role, status: "active" }).onDuplicateKeyUpdate({ set: { role: input.role, status: "active", invitedByUserId: ownerUserId } });
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: ownerUserId, action: "portal.member_granted", entityType: "client_portal_member", detailsJson: JSON.stringify({ userId: targetUser.id, role: input.role }) });
+  return targetUser.id;
+}
+
+export async function updateClientPortalMemberStatus(ownerUserId: number, input: { clientId: number; memberId: number; status: "active" | "suspended" }) {
+  await assertOwnedWhatsappClient(ownerUserId, input.clientId);
+  const db = await requireDb();
+  const current = (await db.select({ id: clientPortalMembers.id }).from(clientPortalMembers).where(and(eq(clientPortalMembers.id, input.memberId), eq(clientPortalMembers.clientId, input.clientId))).limit(1))[0];
+  if (!current) throw new Error("A associação de portal não pertence ao cliente atual.");
+  await db.update(clientPortalMembers).set({ status: input.status }).where(eq(clientPortalMembers.id, input.memberId));
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: ownerUserId, action: "portal.member_status_updated", entityType: "client_portal_member", entityId: input.memberId, detailsJson: JSON.stringify({ status: input.status }) });
+  return input.memberId;
+}
+
+async function getActiveClientPortalMembership(openId: string, clientId: number) {
+  const db = await requireDb();
+  const membership = (await db.select({ memberId: clientPortalMembers.id, role: clientPortalMembers.role, clientId: clientPortalMembers.clientId, clientName: clients.name, clientSegment: clients.segment }).from(clientPortalMembers).innerJoin(users, eq(users.id, clientPortalMembers.userId)).innerJoin(clients, eq(clients.id, clientPortalMembers.clientId)).where(and(eq(users.openId, openId), eq(clientPortalMembers.clientId, clientId), eq(clientPortalMembers.status, "active"))).limit(1))[0];
+  if (!membership) throw new Error("Você não possui acesso ativo a este espaço de cliente.");
+  return membership;
+}
+
+export async function listClientPortalWorkspaces(openId: string) {
+  const db = await requireDb();
+  return db.select({ clientId: clients.id, name: clients.name, segment: clients.segment, role: clientPortalMembers.role }).from(clientPortalMembers).innerJoin(users, eq(users.id, clientPortalMembers.userId)).innerJoin(clients, eq(clients.id, clientPortalMembers.clientId)).where(and(eq(users.openId, openId), eq(clientPortalMembers.status, "active"))).orderBy(asc(clients.name));
+}
+
+export async function getClientPortalOverview(openId: string, clientId: number) {
+  const membership = await getActiveClientPortalMembership(openId, clientId);
+  const db = await requireDb();
+  const [channels, policyRows, subscriptionRows, conversations] = await Promise.all([
+    db.select({ id: whatsappChannels.id, label: whatsappChannels.label, provider: whatsappChannels.provider, status: whatsappChannels.status, displayPhoneNumber: whatsappChannels.displayPhoneNumber, verifiedAt: whatsappChannels.verifiedAt, lastInboundAt: whatsappChannels.lastInboundAt, lastOutboundAt: whatsappChannels.lastOutboundAt }).from(whatsappChannels).where(eq(whatsappChannels.clientId, clientId)).orderBy(asc(whatsappChannels.label)),
+    db.select({ aiAccessMode: whatsappAiPolicies.aiAccessMode, workflowMode: whatsappAiPolicies.workflowMode, monthlyManagedMessageLimit: whatsappAiPolicies.monthlyManagedMessageLimit, updatedAt: whatsappAiPolicies.updatedAt }).from(whatsappAiPolicies).where(eq(whatsappAiPolicies.clientId, clientId)).limit(1),
+    db.select({ status: saasSubscriptions.status, interval: saasSubscriptions.interval, managedAiAddOn: saasSubscriptions.managedAiAddOn, managedAiMonthlyLimit: saasSubscriptions.managedAiMonthlyLimit, currentPeriodEnd: saasSubscriptions.currentPeriodEnd, planName: saasPlans.name, annualPriceCents: saasPlans.annualPriceCents }).from(saasSubscriptions).leftJoin(saasPlans, eq(saasPlans.id, saasSubscriptions.planId)).where(eq(saasSubscriptions.clientId, clientId)).limit(1),
+    db.select({ id: whatsappConversations.id, status: whatsappConversations.status, lastMessagePreview: whatsappConversations.lastMessagePreview, lastMessageAt: whatsappConversations.lastMessageAt, channelLabel: whatsappChannels.label }).from(whatsappConversations).innerJoin(whatsappChannels, eq(whatsappChannels.id, whatsappConversations.channelId)).where(eq(whatsappConversations.clientId, clientId)).orderBy(desc(whatsappConversations.lastMessageAt)).limit(20),
+  ]);
+  return { client: { id: membership.clientId, name: membership.clientName, segment: membership.clientSegment }, membership: { role: membership.role }, channels, policy: policyRows[0] ?? null, subscription: subscriptionRows[0] ?? null, conversations };
+}
+
+export async function listClientPortalConversationMessages(openId: string, input: { clientId: number; conversationId: number }) {
+  await getActiveClientPortalMembership(openId, input.clientId);
+  const db = await requireDb();
+  const exists = (await db.select({ id: whatsappConversations.id }).from(whatsappConversations).where(and(eq(whatsappConversations.id, input.conversationId), eq(whatsappConversations.clientId, input.clientId))).limit(1))[0];
+  if (!exists) throw new Error("A conversa solicitada não pertence ao seu espaço de cliente.");
+  const messages = await db.select({ id: whatsappMessages.id, direction: whatsappMessages.direction, authorType: whatsappMessages.authorType, body: whatsappMessages.body, mediaUrl: whatsappMessages.mediaUrl, templateName: whatsappMessages.templateName, deliveryStatus: whatsappMessages.deliveryStatus, occurredAt: whatsappMessages.occurredAt }).from(whatsappMessages).where(and(eq(whatsappMessages.clientId, input.clientId), eq(whatsappMessages.conversationId, input.conversationId))).orderBy(asc(whatsappMessages.occurredAt));
+  return messages.filter(message => message.deliveryStatus !== "queued");
 }
 
 export async function listAdCampaigns(userId: number, clientId?: number) {

@@ -57,6 +57,41 @@
       "when": 1787232565727,
       "tag": "0007_bouncy_zaladane",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1787329042545,
+      "tag": "0008_slippery_omega_red",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1787330352394,
+      "tag": "0009_left_rocket_racer",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1787331445369,
+      "tag": "0010_early_franklin_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1787332186767,
+      "tag": "0011_talented_trauma",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1787333953938,
+      "tag": "0012_low_mandrill",
+      "breakpoints": true
     }
   ]
 }

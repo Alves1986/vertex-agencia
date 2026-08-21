@@ -9,6 +9,8 @@ import Home from "./pages/Home";
 import Production from "./pages/Production";
 import Projects from "./pages/Projects";
 import Agency from "./pages/Agency";
+import ClientPortal from "./pages/ClientPortal";
+import WhatsApp from "./pages/WhatsApp";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -18,6 +20,8 @@ function Router() {
       <Route path="/projetos" component={Projects} />
       <Route path="/producao" component={Production} />
       <Route path="/agencia" component={Agency} />
+      <Route path="/atendimento" component={WhatsApp} />
+      <Route path="/meu-atendimento" component={ClientPortal} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

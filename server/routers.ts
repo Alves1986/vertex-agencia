@@ -8,6 +8,7 @@ import { productionRouter } from "./routers/production";
 import { projectsRouter } from "./routers/projects";
 import { workspaceRouter } from "./routers/workspace";
 import { agencyRouter } from "./routers/agency";
+import { whatsappRouter } from "./routers/whatsapp";
 
 export const appRouter = router({
   system: systemRouter,
@@ -25,6 +26,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   originalApp: originalAppRouter,
   agency: agencyRouter,
+  whatsapp: whatsappRouter,
 });
 
 export type AppRouter = typeof appRouter;

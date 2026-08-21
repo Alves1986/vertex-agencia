@@ -1,0 +1,1 @@
+ALTER TABLE `saas_plans` ADD `stripePriceId` varchar(255);
