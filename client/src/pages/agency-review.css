@@ -127,6 +127,21 @@
 .agency-batch-approval { background: #eef7f4; border: 1px solid #cbe5da; border-radius: 9px; display: grid; gap: 10px; padding: 11px; }
 .agency-batch-approval p { color: #406774; font-size: 11px; margin: 0; }
 .agency-batch-approval p strong { color: #1f685d; font-size: 14px; }
+.agency-approval-history { margin-top: 14px; }
+.agency-approval-history .ops-panel-heading span { color: #718d98; display: block; font-size: 11px; margin-top: 3px; }
+.agency-approval-history-list { display: grid; gap: 9px; margin-top: 12px; }
+.agency-approval-history-item { align-items: flex-start; background: #fbfdfd; border: 1px solid #dce9eb; border-left: 3px solid #8ba7b0; border-radius: 8px; display: grid; gap: 10px; grid-template-columns: 28px 1fr; padding: 10px; }
+.agency-approval-history-item.is-approved { border-left-color: #2d8976; }
+.agency-approval-history-item.is-changes_requested { border-left-color: #d88737; }
+.agency-approval-history-item.is-rejected { border-left-color: #b75c53; }
+.agency-approval-history-icon { align-items: center; background: #e8f2f3; border-radius: 50%; color: #527885; display: flex; height: 28px; justify-content: center; width: 28px; }
+.agency-approval-history-item.is-approved .agency-approval-history-icon { background: #e5f4ee; color: #237162; }
+.agency-approval-history-item.is-rejected .agency-approval-history-icon { background: #faece9; color: #a65048; }
+.agency-approval-history-item strong, .agency-approval-history-item span, .agency-approval-history-item small { display: block; }
+.agency-approval-history-item strong { color: #244c5d; font-size: 12px; }
+.agency-approval-history-item span { color: #5f7b86; font-size: 11px; margin-top: 2px; }
+.agency-approval-history-item p { color: #426470; font-size: 12px; line-height: 1.45; margin: 7px 0; white-space: pre-wrap; }
+.agency-approval-history-item small { color: #7b939c; font-size: 10px; }
 @keyframes agency-publication-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .agency-publication-orbit svg { animation: none; } .agency-provider-card, .agency-guided-services button { transition: none; } .agency-provider-card:hover, .agency-guided-services button:hover { transform: none; } }
 @media (max-width: 880px) { .agency-guided-services { grid-template-columns: repeat(2, minmax(0, 1fr)); } .agency-guided-actions { align-items: stretch; flex-direction: column; } .agency-guided-actions > div:last-child { justify-content: flex-start; } }

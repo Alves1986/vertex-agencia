@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildAgencyPrompt, extractProviderUsage, testAgencyConnection } from "./agencyGeneration";
+
+const mocks = vi.hoisted(() => ({ invokeLLM: vi.fn() }));
+vi.mock("../_core/llm", () => ({ invokeLLM: mocks.invokeLLM }));
+
+import { buildAgencyPrompt, extractProviderUsage, generateAgencyOutput, normalizeCarouselRole, testAgencyConnection } from "./agencyGeneration";
 
 describe("buildAgencyPrompt", () => {
   it("preserva lacunas de evidência e evita instruções de carrossel composto", () => {
@@ -15,6 +19,23 @@ describe("extractProviderUsage", () => {
     expect(extractProviderUsage("openai", { usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } })).toEqual({ inputTokens: 12, outputTokens: 8, totalTokens: 20 });
     expect(extractProviderUsage("gemini", { usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 } })).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
     expect(extractProviderUsage("anthropic", {})).toBeNull();
+  });
+});
+
+describe("generateAgencyOutput", () => {
+  it("usa a instrução textual de JSON no motor integrado sem habilitar o modo JSON incompatível", async () => {
+    mocks.invokeLLM.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ carousel: [{ slideNumber: 1, role: "cover", headline: "Revisão", body: "Fluxo validado", visualDirection: "Contraste alto", imagePrompt: "Peça vertical" }] }) } }], usage: { prompt_tokens: 12, completion_tokens: 30, total_tokens: 42 } });
+
+    await expect(generateAgencyOutput({ provider: "manus", defaultModel: "gpt-5-mini", apiBaseUrl: null, encryptedApiKey: null }, "Retorne um carrossel.")).resolves.toMatchObject({ provider: "manus", model: "gpt-5-mini", output: { carousel: [expect.objectContaining({ headline: "Revisão" })] } });
+    expect(mocks.invokeLLM.mock.calls[0][0].responseFormat).toBeUndefined();
+    expect(mocks.invokeLLM.mock.calls[0][0].messages[0].content).toContain("começar com {");
+  });
+
+  it("normaliza rótulos narrativos livres para os papéis permitidos do carrossel", () => {
+    expect(normalizeCarouselRole("Introdução / orientação rápida", 0, 3)).toBe("cover");
+    expect(normalizeCarouselRole("Critérios práticos", 1, 3)).toBe("context");
+    expect(normalizeCarouselRole("Próximo passo / convocação", 2, 3)).toBe("cta");
+    expect(normalizeCarouselRole("Rótulo não mapeado", 1, 3)).toBe("insight");
   });
 });
 

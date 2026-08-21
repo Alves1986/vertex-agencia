@@ -27,6 +27,7 @@ import {
   listClientAiConnections,
   listClientCredentialStatuses,
   listClientApiUsage,
+  listCampaignApprovalHistory,
   recordClientAiConnectionTest,
   listCreativeApprovals,
   listCreativeVersions,
@@ -262,6 +263,11 @@ export const agencyRouter = router({
   approvals: protectedProcedure.input(z.object({ creativeVersionId: z.number().int().positive() })).query(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     return listCreativeApprovals(userId, input.creativeVersionId);
+  }),
+
+  approvalHistory: protectedProcedure.input(z.object({ campaignId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return listCampaignApprovalHistory(userId, input.campaignId);
   }),
 
   carouselSlides: protectedProcedure.input(z.object({ campaignId: z.number().int().positive() })).query(async ({ ctx, input }) => {

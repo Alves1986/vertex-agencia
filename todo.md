@@ -192,3 +192,6 @@
 - [x] Criar aprovação em lote de slides da prévia, com seleção explícita, responsável, estado auditável e preservação da revisão humana.
 - [x] Cobrir contratos, persistência, reordenação, coleções e aprovação em lote com testes de servidor e interface.
 - [x] Documentar a operação de reordenação, coleções de marca e aprovação em lote.
+- [x] Criar uma tela de histórico de aprovações por campanha com decisões, responsável, data, notas e slides aprovados em lote.
+- [x] Expor contratos protegidos e testes para consultar o histórico de aprovações sem acesso entre clientes.
+- [x] Configurar o motor de IA integrado e testar a geração completa de um carrossel sem expor chaves de API.

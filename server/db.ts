@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, like, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   adCampaigns,
@@ -1497,6 +1497,45 @@ export async function listCreativeApprovals(userId: number, creativeVersionId: n
     .from(creativeApprovals)
     .where(and(eq(creativeApprovals.creativeVersionId, creativeVersionId), eq(creativeApprovals.ownerUserId, userId)))
     .orderBy(desc(creativeApprovals.createdAt));
+}
+
+export type CampaignApprovalHistoryEntry = {
+  id: number;
+  creativeVersionId: number;
+  reviewerUserId: number;
+  reviewerName: string | null;
+  decision: "approved" | "changes_requested" | "rejected";
+  note: string | null;
+  createdAt: Date;
+  source: "version_approval" | "carousel_batch";
+  slideNumbers: number[];
+};
+
+/** Linha do tempo auditável da campanha, limitada ao proprietário da operação. */
+export async function listCampaignApprovalHistory(userId: number, campaignId: number): Promise<CampaignApprovalHistoryEntry[]> {
+  const db = await requireDb();
+  const campaign = await getAdCampaign(userId, campaignId);
+  if (!campaign) return [];
+
+  const [versionApprovals, batchApprovals] = await Promise.all([
+    db.select().from(creativeApprovals).where(and(eq(creativeApprovals.campaignId, campaignId), eq(creativeApprovals.ownerUserId, userId))).orderBy(desc(creativeApprovals.createdAt)),
+    db.select().from(carouselSlideApprovalBatches).where(and(eq(carouselSlideApprovalBatches.campaignId, campaignId), eq(carouselSlideApprovalBatches.ownerUserId, userId))).orderBy(desc(carouselSlideApprovalBatches.createdAt)),
+  ]);
+  const reviewerIds = Array.from(new Set([...versionApprovals, ...batchApprovals].map(item => item.reviewerUserId)));
+  const reviewers = reviewerIds.length ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, reviewerIds)) : [];
+  const reviewerNames = new Map(reviewers.map(reviewer => [reviewer.id, reviewer.name]));
+  const safeSlideNumbers = (value: string) => {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter((number): number is number => Number.isInteger(number) && number > 0 && number <= 10) : [];
+    } catch {
+      return [];
+    }
+  };
+  return [
+    ...versionApprovals.map(item => ({ id: item.id, creativeVersionId: item.creativeVersionId, reviewerUserId: item.reviewerUserId, reviewerName: reviewerNames.get(item.reviewerUserId) ?? null, decision: item.decision, note: item.note, createdAt: item.createdAt, source: "version_approval" as const, slideNumbers: [] })),
+    ...batchApprovals.map(item => ({ id: item.id, creativeVersionId: item.creativeVersionId, reviewerUserId: item.reviewerUserId, reviewerName: reviewerNames.get(item.reviewerUserId) ?? null, decision: item.decision, note: item.note, createdAt: item.createdAt, source: "carousel_batch" as const, slideNumbers: safeSlideNumbers(item.slideNumbersJson) })),
+  ].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
 }
 
 export async function listCarouselSlides(userId: number, campaignId: number) {

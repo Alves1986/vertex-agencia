@@ -11,6 +11,19 @@ export type AgencyOutput = {
   council?: { lenses: Array<{ lens: string; assessment: string }>; recommendation: string; primaryRisk: string };
 };
 
+const carouselRoles = ["cover", "context", "insight", "proof", "solution", "cta"] as const;
+type CarouselRole = typeof carouselRoles[number];
+
+export function normalizeCarouselRole(role: unknown, index: number, total: number): CarouselRole {
+  const normalized = typeof role === "string" ? role.toLocaleLowerCase("pt-BR") : "";
+  if (normalized.includes("cover") || normalized.includes("capa") || normalized.includes("introdu")) return "cover";
+  if (normalized.includes("context") || normalized.includes("contexto") || normalized.includes("critério") || normalized.includes("criterio")) return "context";
+  if (normalized.includes("proof") || normalized.includes("prova") || normalized.includes("evidência") || normalized.includes("evidencia")) return "proof";
+  if (normalized.includes("solution") || normalized.includes("solução") || normalized.includes("solucao")) return "solution";
+  if (normalized.includes("cta") || normalized.includes("convoca") || normalized.includes("próximo passo") || normalized.includes("proximo passo") || normalized.includes("chamada")) return "cta";
+  return index === 0 ? "cover" : index === total - 1 ? "cta" : "insight";
+}
+
 export type ProviderUsage = {
   inputTokens: number | null;
   outputTokens: number | null;
@@ -42,6 +55,9 @@ function parseOutput(text: string): AgencyOutput {
   const normalized = text.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
   const value = JSON.parse(normalized) as AgencyOutput;
   if (!value || typeof value !== "object") throw new Error("O provedor retornou um formato de geração inválido");
+  if (Array.isArray(value.carousel)) {
+    value.carousel = value.carousel.map((slide, index, slides) => ({ ...slide, slideNumber: Number.isInteger(slide.slideNumber) && slide.slideNumber > 0 ? slide.slideNumber : index + 1, role: normalizeCarouselRole(slide.role, index, slides.length) }));
+  }
   return value;
 }
 
@@ -99,7 +115,7 @@ export async function testAgencyConnection(connection: ConnectionProbe): Promise
 export async function generateAgencyOutput(connection: Connection | null, prompt: string): Promise<{ output: AgencyOutput; provider: string; model: string; usage: ProviderUsage | null }> {
   if (!connection || connection.provider === "manus") {
     const model = connection?.defaultModel || "gpt-5-mini";
-    const result = await invokeLLM({ model, responseFormat: { type: "json_object" }, maxTokens: 4000, messages: [{ role: "system", content: "Você entrega JSON válido, sem markdown." }, { role: "user", content: prompt }] });
+    const result = await invokeLLM({ model, maxTokens: 4000, messages: [{ role: "system", content: "Você entrega JSON válido, sem markdown. O texto da resposta deve começar com { e terminar com }." }, { role: "user", content: prompt }] });
     const content = result.choices[0]?.message.content;
     if (typeof content !== "string") throw new Error("O provedor interno não retornou texto");
     return { output: parseOutput(content), provider: "manus", model, usage: extractProviderUsage("manus", result) };
