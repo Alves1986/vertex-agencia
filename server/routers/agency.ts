@@ -4,6 +4,8 @@ import {
   completeAiGeneration,
   createAdCampaign,
   createAiGeneration,
+  createCarouselBriefTemplate,
+  createClientBrandAsset,
   createCreativeApproval,
   createCreativeVersion,
   createClientAiConnection,
@@ -17,6 +19,8 @@ import {
   getClientAiConnectionSecret,
   listAdCampaigns,
   listAgencyBriefs,
+  listCarouselBriefTemplates,
+  listClientBrandAssets,
   listClientAiConnections,
   listClientCredentialStatuses,
   listClientApiUsage,
@@ -27,13 +31,16 @@ import {
   listTrendSignals,
   listVideoScripts,
   replaceCarouselSlides,
+  deleteCarouselBriefTemplate,
   setClientAiConnectionStatus,
+  setClientBrandAssetStatus,
   updateAdCampaignStatus,
   updateAdCampaignProvider,
   updateClientAiConnection,
   updateClientMonthlyApiCallLimit,
   upsertClientAgencyProfile,
 } from "../db";
+import { storagePut } from "../storage";
 import { encryptProviderKey, getKeyHint } from "../aiAds/crypto";
 import { buildAgencyPrompt, generateAgencyOutput, testAgencyConnection, type AgencyGenerationMode } from "../aiAds/agencyGeneration";
 import { issueConnectionVerification, verifyConnectionVerification } from "../aiAds/connectionVerification";
@@ -42,6 +49,8 @@ import { getOperationalUserId } from "./helpers";
 const providerSchema = z.enum(["manus", "openai", "openai_compatible", "gemini", "anthropic"]);
 const modeSchema = z.enum(["ads", "carousel", "bundle", "strategy", "video", "council"]);
 const profileSchema = z.object({ clientId: z.number().int().positive(), positioning: z.string().max(4000).optional().nullable(), voice: z.string().max(240).optional().nullable(), audience: z.string().max(4000).optional().nullable(), offers: z.string().max(4000).optional().nullable(), proofPolicy: z.string().max(4000).optional().nullable(), visualSystem: z.string().max(4000).optional().nullable(), departmentContextJson: z.string().max(12000).optional().nullable() });
+const carouselSlideSchema = z.object({ slideNumber: z.number().int().min(1).max(10), role: z.enum(["cover", "context", "insight", "proof", "solution", "cta"]), headline: z.string().trim().min(1).max(500), body: z.string().max(2000).optional().nullable(), visualDirection: z.string().max(2000).optional().nullable(), imagePrompt: z.string().max(2000).optional().nullable() });
+const carouselFieldsSchema = z.object({ keyMessage: z.string().max(4000).optional(), audience: z.string().max(2000).optional(), slideCount: z.string().max(4).optional(), format: z.string().max(240).optional(), visualDirection: z.string().max(4000).optional(), callToAction: z.string().max(1200).optional(), assetIds: z.array(z.number().int().positive()).max(20).optional() });
 
 function toCampaignMode(mode: AgencyGenerationMode) {
   return mode === "carousel" ? "carousel" : mode === "ads" ? "ads" : "bundle" as const;
@@ -111,6 +120,41 @@ export const agencyRouter = router({
   saveProfile: protectedProcedure.input(profileSchema).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     return upsertClientAgencyProfile(userId, input);
+  }),
+
+  carouselTemplates: protectedProcedure.input(z.object({ clientId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return listCarouselBriefTemplates(userId, input.clientId);
+  }),
+
+  saveCarouselTemplate: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), name: z.string().trim().min(2).max(180), description: z.string().trim().max(500).optional(), fields: carouselFieldsSchema })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await createCarouselBriefTemplate(userId, { clientId: input.clientId, name: input.name, description: input.description || null, fieldsJson: JSON.stringify(input.fields) }) };
+  }),
+
+  deleteCarouselTemplate: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), templateId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await deleteCarouselBriefTemplate(userId, input) };
+  }),
+
+  brandAssets: protectedProcedure.input(z.object({ clientId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return listClientBrandAssets(userId, input.clientId);
+  }),
+
+  uploadBrandAsset: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), name: z.string().trim().min(2).max(220), assetType: z.enum(["logo", "product", "reference", "palette", "other"]), mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), contentBase64: z.string().min(20).max(7_000_000) })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    const raw = Buffer.from(input.contentBase64, "base64");
+    if (!raw.length || raw.length > 5 * 1024 * 1024) throw new Error("Envie uma imagem válida de até 5 MB.");
+    const extension = input.mimeType === "image/png" ? "png" : input.mimeType === "image/jpeg" ? "jpg" : input.mimeType === "image/webp" ? "webp" : "gif";
+    const safeName = input.name.replace(/[^a-z0-9]+/gi, "-").slice(0, 60) || "referencia";
+    const stored = await storagePut(`brand-assets/client-${input.clientId}/${Date.now()}-${safeName}.${extension}`, raw, input.mimeType);
+    return { id: await createClientBrandAsset(userId, { clientId: input.clientId, name: input.name, assetType: input.assetType, storageKey: stored.key, assetUrl: stored.url, mimeType: input.mimeType, byteSize: raw.length }) };
+  }),
+
+  setBrandAssetStatus: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), assetId: z.number().int().positive(), status: z.enum(["authorized", "archived"]) })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await setClientBrandAssetStatus(userId, input) };
   }),
 
   connectProvider: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), label: z.string().trim().min(2).max(120), provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), defaultImageModel: z.string().max(180).optional().nullable(), apiKey: z.string().min(8).max(1200).optional(), verificationToken: z.string().min(20).max(4000).optional() })).mutation(async ({ ctx, input }) => {
@@ -193,7 +237,13 @@ export const agencyRouter = router({
     return { id: await createCreativeApproval(userId, { ...input, note: input.note || null }) };
   }),
 
-  generate: protectedProcedure.input(z.object({ campaignId: z.number().int().positive(), mode: modeSchema })).mutation(async ({ ctx, input }) => {
+  saveCarouselPreview: protectedProcedure.input(z.object({ campaignId: z.number().int().positive(), slides: z.array(carouselSlideSchema).min(3).max(10) })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    const payloadJson = JSON.stringify({ mode: "carousel", source: "manual_preview", slides: input.slides });
+    return { id: await createCreativeVersion(userId, { campaignId: input.campaignId, kind: "carousel", summary: "Prévia editável revisada antes da geração final", payloadJson }) };
+  }),
+
+  generate: protectedProcedure.input(z.object({ campaignId: z.number().int().positive(), mode: modeSchema, carouselPreview: z.array(carouselSlideSchema).min(3).max(10).optional() })).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     const record = await getAdCampaign(userId, input.campaignId);
     if (!record) throw new Error("Campanha não encontrada");
@@ -206,7 +256,10 @@ export const agencyRouter = router({
       throw new Error("A conexão de IA desta campanha não está disponível. Verifique o provedor antes de gerar.");
     }
     const briefing = (() => { try { return JSON.parse(record.campaign.briefingJson).text || record.campaign.briefingJson; } catch { return record.campaign.briefingJson; } })();
-    const prompt = buildAgencyPrompt({ mode: input.mode, clientName: record.client.name, campaignName: record.campaign.name, objective: record.campaign.objective, briefing, profile });
+    const previewContext = input.mode === "carousel" && input.carouselPreview?.length
+      ? `\n\nPRÉVIA EDITÁVEL APROVADA PARA REFINAMENTO:\n${input.carouselPreview.map(slide => `Slide ${slide.slideNumber} (${slide.role})\nTítulo: ${slide.headline}\nTexto: ${slide.body || ""}\nDireção: ${slide.visualDirection || ""}`).join("\n\n")}\n\nPreserve a intenção, a ordem e os fatos fornecidos; melhore apenas clareza e consistência.`
+      : "";
+    const prompt = buildAgencyPrompt({ mode: input.mode, clientName: record.client.name, campaignName: record.campaign.name, objective: record.campaign.objective, briefing: `${briefing}${previewContext}`, profile });
     await updateAdCampaignStatus(userId, input.campaignId, "generating");
     const generationId = await createAiGeneration(userId, { campaignId: input.campaignId, kind: input.mode === "carousel" ? "carousel" : input.mode === "ads" ? "ads" : "bundle", provider: connection?.provider || "manus", model: connection?.defaultModel || "gpt-5-mini", promptSnapshot: prompt });
     const generationStartedAt = Date.now();

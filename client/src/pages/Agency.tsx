@@ -1,5 +1,5 @@
 import React, { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
-import { Bot, BrainCircuit, CheckCircle2, ChevronRight, Clapperboard, Copy, FileText, KeyRound, Loader2, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, UploadCloud, WandSparkles, XCircle } from "lucide-react";
+import { Bot, BrainCircuit, CheckCircle2, ChevronRight, Clapperboard, Copy, FileText, ImagePlus, KeyRound, Layers3, Loader2, Pencil, Plus, RefreshCw, Save, ShieldCheck, Sparkles, ToggleLeft, ToggleRight, Trash2, UploadCloud, WandSparkles, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StudioShell } from "@/components/StudioShell";
@@ -16,6 +16,8 @@ type GuidedFieldKey = "offer" | "audience" | "channel" | "keyMessage" | "callToA
 type GuidedField = { key: GuidedFieldKey; label: string; placeholder: string; required?: boolean; multiline?: boolean; inputType?: "text" | "number"; min?: number; max?: number };
 export type GuidedService = { key: GuidedServiceKey; label: string; description: string; capability: string; generationMode: Mode; fields: GuidedField[] };
 type GuidedCampaignForm = { name: string; objective: string; connectionId: string };
+export type CarouselPreviewSlide = { slideNumber: number; role: "cover" | "context" | "insight" | "proof" | "solution" | "cta"; headline: string; body: string; visualDirection: string };
+type BrandAssetReference = { id: number; name: string; assetType: "logo" | "product" | "reference" | "palette" | "other"; assetUrl: string; status: "authorized" | "archived" };
 
 export const agencyModeOptions: Record<Mode, { label: string; description: string }> = {
   bundle: { label: "Campanha integrada", description: "Estratégia, anúncios, carrossel e roteiro no mesmo briefing." },
@@ -35,12 +37,42 @@ export const guidedServiceCatalog: GuidedService[] = [
   { key: "council", label: "Conselho IA", description: "Compara lentes de decisão, recomendação e riscos a revisar.", capability: "Conselho de decisão", generationMode: "council", fields: [{ key: "decision", label: "Decisão que precisa ser tomada", placeholder: "A pergunta objetiva que a equipe precisa responder", required: true, multiline: true }, { key: "options", label: "Opções em análise", placeholder: "Alternativas que devem ser comparadas", required: true, multiline: true }, { key: "risks", label: "Riscos ou limites conhecidos", placeholder: "O que não pode ser ignorado", multiline: true }, { key: "proof", label: "Evidências e dados reais", placeholder: "Fontes, histórico e fatos disponíveis", multiline: true }] },
 ];
 
-export function buildGuidedBriefing(service: GuidedService, answers: Partial<Record<GuidedFieldKey, string>>) {
+export function buildGuidedBriefing(service: GuidedService, answers: Partial<Record<GuidedFieldKey, string>>, assets: BrandAssetReference[] = []) {
   const details = service.fields
     .map(field => ({ label: field.label, value: answers[field.key]?.trim() }))
     .filter((item): item is { label: string; value: string } => Boolean(item.value))
     .map(item => `- ${item.label}: ${item.value}`);
-  return [`Serviço selecionado: ${service.label}`, `Capacidade ativada: ${service.capability}`, ...details, "\nUse somente informações fornecidas. Marque lacunas como [FONTE PENDENTE] e mantenha a entrega em revisão humana."].join("\n");
+  const assetLines = assets.length ? [`Referências visuais autorizadas: ${assets.map(asset => `${asset.name} (${asset.assetType})`).join(", ")}`] : [];
+  return [`Serviço selecionado: ${service.label}`, `Capacidade ativada: ${service.capability}`, ...details, ...assetLines, "\nUse somente informações fornecidas. Marque lacunas como [FONTE PENDENTE] e mantenha a entrega em revisão humana."].join("\n");
+}
+
+export function buildCarouselPreview(answers: Partial<Record<GuidedFieldKey, string>>): CarouselPreviewSlide[] {
+  const requestedCount = Number(answers.slideCount);
+  const slideCount = Number.isInteger(requestedCount) && requestedCount >= 3 && requestedCount <= 10 ? requestedCount : 5;
+  const keyMessage = answers.keyMessage?.trim() || "Ideia principal em revisão";
+  const audience = answers.audience?.trim() || "público prioritário";
+  const visualDirection = answers.visualDirection?.trim() || "Seguir o sistema visual autorizado da marca";
+  const callToAction = answers.callToAction?.trim() || "Salve este conteúdo para consultar depois";
+  const base: CarouselPreviewSlide[] = [
+    { slideNumber: 1, role: "cover", headline: keyMessage, body: `Uma narrativa para ${audience}.`, visualDirection },
+    { slideNumber: 2, role: "context", headline: "O contexto que importa", body: `Apresente a tensão ou oportunidade relacionada a ${keyMessage.toLowerCase()}.`, visualDirection },
+    { slideNumber: slideCount, role: "cta", headline: callToAction, body: "Finalize com uma ação clara e coerente com o objetivo informado.", visualDirection },
+  ];
+  const middleRoles: CarouselPreviewSlide["role"][] = ["insight", "proof", "solution"];
+  for (let slideNumber = 3; slideNumber < slideCount; slideNumber += 1) {
+    const role = middleRoles[(slideNumber - 3) % middleRoles.length];
+    base.splice(base.length - 1, 0, { slideNumber, role, headline: role === "proof" ? "Evidência ou exemplo" : role === "solution" ? "Como avançar" : "O insight central", body: `Desenvolva ${keyMessage.toLowerCase()} com clareza, sem inventar dados.`, visualDirection });
+  }
+  return base;
+}
+
+export function parseCarouselTemplateFields(fieldsJson: string): Partial<Record<GuidedFieldKey, string>> {
+  try {
+    const parsed = JSON.parse(fieldsJson) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(parsed).filter(([key, value]) => typeof value === "string" && guidedServiceCatalog.find(service => service.key === "carousel")?.fields.some(field => field.key === key))) as Partial<Record<GuidedFieldKey, string>>;
+  } catch {
+    return {};
+  }
 }
 
 export function getGuidedCreationValidation(service: GuidedService, campaign: GuidedCampaignForm, answers: Partial<Record<GuidedFieldKey, string>>) {
@@ -55,13 +87,13 @@ export function getGuidedCreationValidation(service: GuidedService, campaign: Gu
   return null;
 }
 
-export function buildGuidedCampaignPayload(clientId: number, service: GuidedService, campaign: GuidedCampaignForm, answers: Partial<Record<GuidedFieldKey, string>>) {
+export function buildGuidedCampaignPayload(clientId: number, service: GuidedService, campaign: GuidedCampaignForm, answers: Partial<Record<GuidedFieldKey, string>>, assets: BrandAssetReference[] = []) {
   const mode: "ads" | "carousel" | "bundle" = service.generationMode === "ads" ? "ads" : service.generationMode === "carousel" ? "carousel" : "bundle";
   return {
     clientId,
     name: campaign.name.trim(),
     objective: campaign.objective.trim(),
-    briefing: buildGuidedBriefing(service, answers),
+    briefing: buildGuidedBriefing(service, answers, assets),
     mode,
     generationMode: service.generationMode,
     serviceKey: service.key,
@@ -116,6 +148,9 @@ export default function Agency() {
   const [guidedServiceKey, setGuidedServiceKey] = useState<GuidedServiceKey>("bundle");
   const [guidedAnswers, setGuidedAnswers] = useState<Partial<Record<GuidedFieldKey, string>>>({});
   const [guidedAction, setGuidedAction] = useState<"idle" | "draft" | "generating">("idle");
+  const [templateName, setTemplateName] = useState("");
+  const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const [editablePreview, setEditablePreview] = useState<CarouselPreviewSlide[]>([]);
   const [profile, setProfile] = useState(defaultProfile);
   const [campaign, setCampaign] = useState({ name: "", objective: "", briefing: "", connectionId: "" });
   const [provider, setProvider] = useState<ProviderForm>(() => emptyProvider());
@@ -135,6 +170,9 @@ export default function Agency() {
   const selectedGuidedService = useMemo(() => guidedServiceCatalog.find(item => item.key === guidedServiceKey) ?? guidedServiceCatalog[0], [guidedServiceKey]);
   const overview = trpc.agency.overview.useQuery({ clientId: clientId ?? 0 }, { enabled: clientId !== null });
   const versions = trpc.agency.versions.useQuery({ campaignId: reviewCampaignId ?? 0 }, { enabled: reviewCampaignId !== null });
+  const carouselTemplates = trpc.agency.carouselTemplates.useQuery({ clientId: clientId ?? 0 }, { enabled: clientId !== null });
+  const brandAssets = trpc.agency.brandAssets.useQuery({ clientId: clientId ?? 0 }, { enabled: clientId !== null });
+  const selectedBrandAssets = useMemo(() => (brandAssets.data ?? []).filter(asset => asset.status === "authorized" && selectedAssetIds.includes(asset.id)) as BrandAssetReference[], [brandAssets.data, selectedAssetIds]);
 
   useEffect(() => {
     if (clientId !== null || !clients.data?.length) return;
@@ -163,6 +201,11 @@ export default function Agency() {
   });
   const generate = trpc.agency.generate.useMutation({ onSuccess: async (_data, variables) => { setReviewCampaignId(variables.campaignId); await Promise.all([utils.agency.overview.invalidate(), utils.agency.versions.invalidate({ campaignId: variables.campaignId })]); toast.success("Geração concluída. Revise os materiais antes de aprovar."); }, onError: error => toast.error(error.message) });
   const approveVersion = trpc.agency.approveVersion.useMutation({ onSuccess: () => { if (reviewCampaignId) utils.agency.versions.invalidate({ campaignId: reviewCampaignId }); }, onError: error => toast.error(error.message) });
+  const saveCarouselTemplate = trpc.agency.saveCarouselTemplate.useMutation({ onSuccess: async () => { await carouselTemplates.refetch(); setTemplateName(""); toast.success("Modelo de briefing salvo para este cliente."); }, onError: error => toast.error(error.message) });
+  const deleteCarouselTemplate = trpc.agency.deleteCarouselTemplate.useMutation({ onSuccess: async () => { await carouselTemplates.refetch(); toast.success("Modelo removido."); }, onError: error => toast.error(error.message) });
+  const uploadBrandAsset = trpc.agency.uploadBrandAsset.useMutation({ onSuccess: async () => { await brandAssets.refetch(); toast.success("Ativo enviado para a biblioteca de marca."); }, onError: error => toast.error(error.message) });
+  const setBrandAssetStatus = trpc.agency.setBrandAssetStatus.useMutation({ onSuccess: async () => { await brandAssets.refetch(); toast.success("Estado de autorização atualizado."); }, onError: error => toast.error(error.message) });
+  const saveCarouselPreview = trpc.agency.saveCarouselPreview.useMutation({ onError: error => toast.error(error.message) });
   const isSavingProvider = connectProvider.isPending || updateProvider.isPending;
   const providerNeedsTest = provider.provider !== "manus" && Boolean(provider.apiKey.trim());
   const revalidationState = getConnectionRevalidationState({ editing: Boolean(editingConnectionId), originalConfiguration: editingConfigurationFingerprint, provider: provider.provider, baseUrl: provider.baseUrl, model: provider.model, apiKey: provider.apiKey });
@@ -254,18 +297,56 @@ export default function Agency() {
     }
     setGuidedAction(action);
     try {
-      const data = await createCampaign.mutateAsync(buildGuidedCampaignPayload(clientId, selectedGuidedService, campaign, guidedAnswers));
+      const preview = selectedGuidedService.key === "carousel" ? (editablePreview.length ? editablePreview : buildCarouselPreview(guidedAnswers)) : [];
+      const data = await createCampaign.mutateAsync(buildGuidedCampaignPayload(clientId, selectedGuidedService, campaign, guidedAnswers, selectedBrandAssets));
+      if (preview.length) await saveCarouselPreview.mutateAsync({ campaignId: data.id, slides: preview });
       if (action === "generating") {
-        await generate.mutateAsync({ campaignId: data.id, mode: selectedGuidedService.generationMode });
+        await generate.mutateAsync({ campaignId: data.id, mode: selectedGuidedService.generationMode, carouselPreview: preview.length ? preview : undefined });
         setReviewCampaignId(data.id);
         toast.success(`${selectedGuidedService.label} criada e enviada para revisão humana.`);
       } else {
         toast.success(`${selectedGuidedService.label} salva como material de trabalho.`);
       }
       setGuidedAnswers({});
+      setEditablePreview([]);
     } finally {
       setGuidedAction("idle");
     }
+  }
+  function loadCarouselTemplate(fieldsJson: string) {
+    setGuidedServiceKey("carousel");
+    setMode("carousel");
+    setGuidedAnswers(parseCarouselTemplateFields(fieldsJson));
+    setEditablePreview([]);
+    toast.success("Modelo carregado. Revise os campos antes de preparar a prévia.");
+  }
+  function saveCurrentCarouselTemplate() {
+    if (!clientId) return;
+    if (!templateName.trim()) {
+      toast.error("Dê um nome ao modelo antes de salvá-lo.");
+      return;
+    }
+    const carouselService = guidedServiceCatalog.find(service => service.key === "carousel");
+    if (!carouselService) return;
+    const missingField = carouselService.fields.find(field => field.required && !guidedAnswers[field.key]?.trim());
+    if (missingField) {
+      toast.error(`Preencha “${missingField.label}” antes de salvar o modelo.`);
+      return;
+    }
+    saveCarouselTemplate.mutate({ clientId, name: templateName, description: campaign.objective || undefined, fields: guidedAnswers });
+  }
+  async function handleBrandAssetUpload(file?: File) {
+    if (!clientId || !file) return;
+    if (!(["image/png", "image/jpeg", "image/webp", "image/gif"] as string[]).includes(file.type)) {
+      toast.error("Envie uma imagem PNG, JPG, WebP ou GIF.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("O ativo deve ter no máximo 5 MB.");
+      return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("Não foi possível ler o arquivo.")); reader.readAsDataURL(file); });
+    await uploadBrandAsset.mutateAsync({ clientId, name: file.name.replace(/\.[^.]+$/, ""), assetType: "reference", mimeType: file.type as "image/png" | "image/jpeg" | "image/webp" | "image/gif", contentBase64: dataUrl.split(",")[1] || "" });
   }
   function requestPublication(target: PublicationTarget) {
     setPublicationTarget(target);
@@ -330,12 +411,13 @@ export default function Agency() {
           <p className="ops-panel-copy">O cliente selecionado define o contexto. Em seguida, a VERTEX ativa a capacidade da entrega e organiza o briefing antes de criar qualquer material.</p>
           <div className="agency-guided-steps" aria-label="Etapas do fluxo de criação"><span><b>1</b> Cliente <strong>{selectedClient.name}</strong></span><span><b>2</b> Serviço <strong>{selectedGuidedService.label}</strong></span><span><b>3</b> Briefing <strong>Revisável</strong></span></div>
           <label className="agency-guided-client-picker"><span>Cliente para esta criação</span><select value={clientId ?? ""} onChange={event => setClientId(Number(event.target.value))} aria-label="Cliente do fluxo guiado">{(clients.data ?? []).map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
-          <div className="agency-guided-services" aria-label="Tipos de serviço">{guidedServiceCatalog.map(service => <button key={service.key} className={guidedServiceKey === service.key ? "is-selected" : ""} type="button" onClick={() => { setGuidedServiceKey(service.key); setMode(service.generationMode); setGuidedAnswers({}); }}><span>{service.capability}</span><strong>{service.label}</strong><small>{service.description}</small></button>)}</div>
+          <div className="agency-guided-services" aria-label="Tipos de serviço">{guidedServiceCatalog.map(service => <button key={service.key} className={guidedServiceKey === service.key ? "is-selected" : ""} type="button" onClick={() => { setGuidedServiceKey(service.key); setMode(service.generationMode); setGuidedAnswers({}); setEditablePreview([]); setSelectedAssetIds([]); }}><span>{service.capability}</span><strong>{service.label}</strong><small>{service.description}</small></button>)}</div>
           <form onSubmit={event => void submitGuidedCampaign(event, "generating")} className="agency-campaign-form agency-guided-form">
             <div className="agency-guided-capability"><Sparkles size={16} /><div><span>Capacidade ativada</span><strong>{selectedGuidedService.capability}</strong></div><p>{selectedGuidedService.description}</p></div>
             <div className="agency-form-grid"><Field label="Nome do projeto" value={campaign.name} onChange={value => setCampaign({ ...campaign, name: value })} placeholder={`Ex.: ${selectedGuidedService.label} — ${selectedClient.name}`} required /><Field label="Objetivo da entrega" value={campaign.objective} onChange={value => setCampaign({ ...campaign, objective: value })} placeholder="Ex.: gerar conversas qualificadas" required /><label className="agency-field">Motor de IA<select value={campaign.connectionId} onChange={event => setCampaign({ ...campaign, connectionId: event.target.value })}><option value="">Manus integrado</option>{(overview.data?.connections ?? []).filter(item => item.status === "active").map(item => <option key={item.id} value={item.id}>{item.label} · {item.defaultModel}</option>)}</select></label></div>
-            {selectedGuidedService.key === "carousel" ? <div className="agency-carousel-briefing-note"><Sparkles size={16} /><div><strong>Skill de carrossel ativa</strong><p>O briefing gera uma narrativa por slide e mantém todas as artes em rascunho para revisão humana.</p></div></div> : null}
+            {selectedGuidedService.key === "carousel" ? <><div className="agency-carousel-briefing-note"><Sparkles size={16} /><div><strong>Skill de carrossel ativa</strong><p>O briefing gera uma narrativa por slide e mantém todas as artes em rascunho para revisão humana.</p></div></div><section className="agency-carousel-resources" aria-label="Modelos e referências de carrossel"><div className="agency-resource-heading"><div><span>Modelos do cliente</span><strong>Reutilize um briefing aprovado</strong></div><Layers3 size={18} /></div><div className="agency-template-actions"><input value={templateName} onChange={event => setTemplateName(event.target.value)} placeholder="Nome deste modelo de briefing" aria-label="Nome do modelo de briefing" /><button type="button" className="ops-outline-button" onClick={saveCurrentCarouselTemplate} disabled={saveCarouselTemplate.isPending}>{saveCarouselTemplate.isPending ? <Loader2 size={15} /> : <Save size={15} />} Salvar modelo</button></div><div className="agency-template-list">{(carouselTemplates.data ?? []).map(template => <article key={template.id}><div><strong>{template.name}</strong><small>{template.description || "Campos de carrossel personalizados"}</small></div><div><button type="button" className="ops-text-button" onClick={() => loadCarouselTemplate(template.fieldsJson)}>Carregar</button><button type="button" className="ops-text-button agency-reject-action" onClick={() => clientId && deleteCarouselTemplate.mutate({ clientId, templateId: template.id })}><Trash2 size={14} /> Remover</button></div></article>)}{!carouselTemplates.isLoading && !carouselTemplates.data?.length ? <p className="ops-empty-copy">Nenhum modelo salvo ainda. Preencha os campos e guarde uma estrutura reutilizável para este cliente.</p> : null}</div><div className="agency-resource-heading agency-assets-heading"><div><span>Biblioteca de marca</span><strong>Referências visuais autorizadas</strong></div><label className="ops-outline-button agency-file-button"><ImagePlus size={15} /> Enviar ativo<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => void handleBrandAssetUpload(event.target.files?.[0])} /></label></div><div className="agency-brand-asset-grid">{(brandAssets.data ?? []).map(asset => <article key={asset.id} className={selectedAssetIds.includes(asset.id) ? "is-selected" : asset.status === "archived" ? "is-archived" : ""}><img src={asset.assetUrl} alt={asset.name} /><div><strong>{asset.name}</strong><small>{asset.assetType === "reference" ? "Referência" : asset.assetType}</small></div><label><input type="checkbox" disabled={asset.status !== "authorized"} checked={selectedAssetIds.includes(asset.id)} onChange={event => setSelectedAssetIds(current => event.target.checked ? [...current, asset.id] : current.filter(id => id !== asset.id))} /> Usar</label><button type="button" className="ops-text-button" onClick={() => clientId && setBrandAssetStatus.mutate({ clientId, assetId: asset.id, status: asset.status === "authorized" ? "archived" : "authorized" })}>{asset.status === "authorized" ? "Arquivar" : "Autorizar"}</button></article>)}{!brandAssets.isLoading && !brandAssets.data?.length ? <p className="ops-empty-copy">Envie logos, fotos de produto ou referências autorizadas. Apenas itens autorizados poderão acompanhar a criação.</p> : null}</div></section></> : null}
             <div className="agency-guided-question-grid">{selectedGuidedService.fields.map(field => <Field key={field.key} label={`${field.label}${field.required ? " *" : ""}`} value={guidedAnswers[field.key] ?? ""} onChange={value => setGuidedAnswers(current => ({ ...current, [field.key]: value }))} placeholder={field.placeholder} multiline={field.multiline} required={field.required} type={field.inputType} min={field.min} max={field.max} />)}</div>
+            {selectedGuidedService.key === "carousel" ? <section className="agency-carousel-preview" aria-label="Prévia editável de slides"><div className="agency-resource-heading"><div><span>Prévia antes da geração final</span><strong>Ajuste a narrativa slide a slide</strong></div><button type="button" className="ops-outline-button" onClick={() => setEditablePreview(buildCarouselPreview(guidedAnswers))}><WandSparkles size={15} /> Preparar prévia</button></div>{editablePreview.length ? <div className="agency-preview-slide-grid">{editablePreview.map((slide, index) => <article key={slide.slideNumber}><div className="agency-preview-slide-label"><span>Slide {slide.slideNumber}</span><small>{slide.role}</small></div><Field label="Título" value={slide.headline} onChange={headline => setEditablePreview(current => current.map((item, position) => position === index ? { ...item, headline } : item))} placeholder="Título do slide" /><Field label="Texto" value={slide.body} onChange={body => setEditablePreview(current => current.map((item, position) => position === index ? { ...item, body } : item))} placeholder="Desenvolvimento do slide" multiline /><Field label="Direção visual" value={slide.visualDirection} onChange={visualDirection => setEditablePreview(current => current.map((item, position) => position === index ? { ...item, visualDirection } : item))} placeholder="Direção para a arte" multiline /></article>)}</div> : <p className="ops-empty-copy">Preencha o briefing e escolha <strong>Preparar prévia</strong> para editar a estrutura antes da geração final.</p>}</section> : null}
             <div className="agency-guided-actions"><div className="agency-publication-guardrail"><ShieldCheck size={16} /><span>A criação gera material interno sujeito à revisão humana. Nenhuma publicação externa será acionada.</span></div><div><button className="ops-outline-button" type="button" disabled={guidedAction !== "idle" || createCampaign.isPending || generate.isPending} onClick={event => void submitGuidedCampaign(event, "draft")}>{guidedAction === "draft" ? <Loader2 size={16} /> : <FileText size={16} />} Salvar briefing</button><button className="ops-primary-button" type="submit" disabled={guidedAction !== "idle" || createCampaign.isPending || generate.isPending}>{guidedAction === "generating" ? <Loader2 size={16} /> : <WandSparkles size={17} />} Iniciar criação</button></div></div>
           </form>
         </section>

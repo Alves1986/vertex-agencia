@@ -2,13 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
 
 const mocks = vi.hoisted(() => ({
-  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listClientApiUsage: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), updateClientMonthlyApiCallLimit: vi.fn(), upsertClientAgencyProfile: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(),
+  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listClientApiUsage: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), updateClientMonthlyApiCallLimit: vi.fn(), upsertClientAgencyProfile: vi.fn(), listCarouselBriefTemplates: vi.fn(), createCarouselBriefTemplate: vi.fn(), deleteCarouselBriefTemplate: vi.fn(), listClientBrandAssets: vi.fn(), createClientBrandAsset: vi.fn(), setClientBrandAssetStatus: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(), storagePut: vi.fn(),
 }));
 
 vi.mock("../db", () => mocks);
 vi.mock("./helpers", () => ({ getOperationalUserId: mocks.getOperationalUserId }));
 vi.mock("../aiAds/agencyGeneration", () => ({ buildAgencyPrompt: mocks.buildAgencyPrompt, generateAgencyOutput: mocks.generateAgencyOutput, testAgencyConnection: mocks.testAgencyConnection }));
 vi.mock("../aiAds/connectionVerification", () => ({ issueConnectionVerification: mocks.issueConnectionVerification, verifyConnectionVerification: mocks.verifyConnectionVerification }));
+vi.mock("../storage", () => ({ storagePut: mocks.storagePut }));
 
 import { agencyRouter } from "./agency";
 
@@ -88,6 +89,42 @@ describe("agency generation review contracts", () => {
     expect(mocks.createAiGeneration).toHaveBeenCalledWith(7, expect.objectContaining({ campaignId: 44, kind: "carousel" }));
     expect(mocks.replaceCarouselSlides).toHaveBeenCalledWith(7, 44, 54, carousel);
     expect(mocks.createCreativeVersion).toHaveBeenCalledWith(7, expect.objectContaining({ campaignId: 44, kind: "carousel" }));
+  });
+
+  it("persiste uma prévia editável como versão revisável antes da geração final", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.createCreativeVersion.mockResolvedValue(121);
+    const slides = [
+      { slideNumber: 1, role: "cover", headline: "Guia de acabamentos", body: "Comece pelo uso", visualDirection: "Texturas naturais", imagePrompt: "Capa editorial" },
+      { slideNumber: 2, role: "context", headline: "Compare materiais", body: "Avalie resistência", visualDirection: "Texturas naturais", imagePrompt: "Comparativo editorial" },
+      { slideNumber: 3, role: "cta", headline: "Solicite o catálogo", body: "Conte com a VERTEX", visualDirection: "Texturas naturais", imagePrompt: "CTA editorial" },
+    ];
+    const caller = agencyRouter.createCaller(createContext());
+
+    await expect(caller.saveCarouselPreview({ campaignId: 44, slides })).resolves.toEqual({ id: 121 });
+    expect(mocks.createCreativeVersion).toHaveBeenCalledWith(7, expect.objectContaining({ campaignId: 44, kind: "carousel", summary: expect.stringContaining("Prévia editável") }));
+    expect(JSON.parse(mocks.createCreativeVersion.mock.calls[0][1].payloadJson)).toMatchObject({ source: "manual_preview", slides });
+  });
+
+  it("salva e consulta modelos e ativos dentro do cliente solicitado", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.createCarouselBriefTemplate.mockResolvedValue(32);
+    mocks.listCarouselBriefTemplates.mockResolvedValue([{ id: 32, clientId: 3, name: "Institucional", fieldsJson: "{}" }]);
+    mocks.storagePut.mockResolvedValue({ key: "brand-assets/client-3/logo.png", url: "https://storage.example/logo.png" });
+    mocks.createClientBrandAsset.mockResolvedValue(65);
+    mocks.listClientBrandAssets.mockResolvedValue([{ id: 65, clientId: 3, name: "Logo aprovado", status: "authorized" }]);
+    const caller = agencyRouter.createCaller(createContext());
+
+    await expect(caller.saveCarouselTemplate({ clientId: 3, name: "Institucional", fields: { keyMessage: "Escolha com confiança", audience: "Arquitetos" } })).resolves.toEqual({ id: 32 });
+    await expect(caller.carouselTemplates({ clientId: 3 })).resolves.toEqual([{ id: 32, clientId: 3, name: "Institucional", fieldsJson: "{}" }]);
+    await expect(caller.uploadBrandAsset({ clientId: 3, name: "Logo aprovado", assetType: "logo", mimeType: "image/png", contentBase64: "aGVsbG8gd29ybGQgYnJhbmQgYXNzZXQ=" })).resolves.toEqual({ id: 65 });
+    await expect(caller.brandAssets({ clientId: 3 })).resolves.toEqual([{ id: 65, clientId: 3, name: "Logo aprovado", status: "authorized" }]);
+
+    expect(mocks.createCarouselBriefTemplate).toHaveBeenCalledWith(7, expect.objectContaining({ clientId: 3, name: "Institucional" }));
+    expect(mocks.listCarouselBriefTemplates).toHaveBeenCalledWith(7, 3);
+    expect(mocks.storagePut).toHaveBeenCalledWith(expect.stringContaining("brand-assets/client-3/"), expect.any(Buffer), "image/png");
+    expect(mocks.createClientBrandAsset).toHaveBeenCalledWith(7, expect.objectContaining({ clientId: 3, name: "Logo aprovado", assetType: "logo" }));
+    expect(mocks.listClientBrandAssets).toHaveBeenCalledWith(7, 3);
   });
 
   it("registra decisões humanas e lista o histórico somente pelo contrato protegido", async () => {

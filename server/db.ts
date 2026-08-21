@@ -5,6 +5,8 @@ import {
   aiGenerations,
   calendarEvents,
   carouselSlides,
+  carouselBriefTemplates,
+  clientBrandAssets,
   creativeApprovals,
   creativeVersions,
   clientAgencyProfiles,
@@ -1557,6 +1559,73 @@ export async function createContentBrief(userId: number, input: {
 export async function listAgencyBriefs(userId: number, clientId: number) {
   const db = await requireDb();
   return db.select().from(contentBriefs).where(and(eq(contentBriefs.ownerUserId, userId), eq(contentBriefs.clientId, clientId))).orderBy(desc(contentBriefs.updatedAt));
+}
+
+async function requireOwnedAgencyClient(userId: number, clientId: number) {
+  const db = await requireDb();
+  const ownedClient = await db
+    .select({ id: clients.id })
+    .from(clients)
+    .where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId)))
+    .limit(1);
+  if (!ownedClient[0]) throw new Error("Cliente inválido para este espaço de trabalho");
+  return db;
+}
+
+export async function listCarouselBriefTemplates(userId: number, clientId: number) {
+  const db = await requireOwnedAgencyClient(userId, clientId);
+  return db
+    .select()
+    .from(carouselBriefTemplates)
+    .where(and(eq(carouselBriefTemplates.ownerUserId, userId), eq(carouselBriefTemplates.clientId, clientId)))
+    .orderBy(desc(carouselBriefTemplates.updatedAt));
+}
+
+export async function createCarouselBriefTemplate(userId: number, input: { clientId: number; name: string; description?: string | null; fieldsJson: string }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const [created] = await db.insert(carouselBriefTemplates).values({ ...input, ownerUserId: userId }).$returningId();
+  return created.id;
+}
+
+export async function deleteCarouselBriefTemplate(userId: number, input: { clientId: number; templateId: number }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const template = await db
+    .select({ id: carouselBriefTemplates.id })
+    .from(carouselBriefTemplates)
+    .where(and(eq(carouselBriefTemplates.id, input.templateId), eq(carouselBriefTemplates.clientId, input.clientId), eq(carouselBriefTemplates.ownerUserId, userId)))
+    .limit(1);
+  if (!template[0]) throw new Error("Modelo de briefing não encontrado para este cliente");
+  await db.delete(carouselBriefTemplates).where(eq(carouselBriefTemplates.id, input.templateId));
+  return input.templateId;
+}
+
+export async function listClientBrandAssets(userId: number, clientId: number) {
+  const db = await requireOwnedAgencyClient(userId, clientId);
+  return db
+    .select()
+    .from(clientBrandAssets)
+    .where(and(eq(clientBrandAssets.ownerUserId, userId), eq(clientBrandAssets.clientId, clientId)))
+    .orderBy(desc(clientBrandAssets.updatedAt));
+}
+
+export async function createClientBrandAsset(userId: number, input: {
+  clientId: number; name: string; assetType: "logo" | "product" | "reference" | "palette" | "other"; storageKey: string; assetUrl: string; mimeType: string; byteSize: number;
+}) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const [created] = await db.insert(clientBrandAssets).values({ ...input, ownerUserId: userId, status: "authorized" }).$returningId();
+  return created.id;
+}
+
+export async function setClientBrandAssetStatus(userId: number, input: { clientId: number; assetId: number; status: "authorized" | "archived" }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const asset = await db
+    .select({ id: clientBrandAssets.id })
+    .from(clientBrandAssets)
+    .where(and(eq(clientBrandAssets.id, input.assetId), eq(clientBrandAssets.clientId, input.clientId), eq(clientBrandAssets.ownerUserId, userId)))
+    .limit(1);
+  if (!asset[0]) throw new Error("Ativo de marca não encontrado para este cliente");
+  await db.update(clientBrandAssets).set({ status: input.status }).where(eq(clientBrandAssets.id, input.assetId));
+  return input.assetId;
 }
 
 export async function createTrendSignal(userId: number, input: {

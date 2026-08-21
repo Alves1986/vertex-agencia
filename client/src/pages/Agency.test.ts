@@ -15,7 +15,7 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-import { agencyModeOptions, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, guidedServiceCatalog, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
+import { agencyModeOptions, buildCarouselPreview, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, guidedServiceCatalog, parseCarouselTemplateFields, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
 
 describe("modos da Agência IA", () => {
   it("mantém fluxos integrados e separados para o mesmo briefing", () => {
@@ -53,6 +53,21 @@ describe("modos da Agência IA", () => {
     const payload = buildGuidedCampaignPayload(14, carousel, { name: "Carrossel de acabamento", objective: "Aumentar consideração", connectionId: "7" }, { keyMessage: "Acabamento certo", audience: "Arquitetos", slideCount: "6", format: "Vertical 1080 × 1350", visualDirection: "Tons minerais", callToAction: "Fale com a equipe" });
     expect(payload).toMatchObject({ clientId: 14, mode: "carousel", generationMode: "carousel", serviceKey: "carousel", providerConnectionId: 7 });
     expect(payload.briefing).toContain("Narrativa para carrossel");
+  });
+
+  it("prepara uma prévia editável com estrutura de capa, desenvolvimento e CTA", () => {
+    const preview = buildCarouselPreview({ keyMessage: "Escolha o revestimento certo", audience: "Arquitetos", slideCount: "5", visualDirection: "Texturas naturais", callToAction: "Solicite o catálogo" });
+    expect(preview).toHaveLength(5);
+    expect(preview[0]).toMatchObject({ slideNumber: 1, role: "cover", headline: "Escolha o revestimento certo" });
+    expect(preview.at(-1)).toMatchObject({ slideNumber: 5, role: "cta", headline: "Solicite o catálogo" });
+    expect(preview.every(slide => slide.visualDirection === "Texturas naturais")).toBe(true);
+  });
+
+  it("carrega somente campos reconhecidos de modelos do cliente e inclui ativos autorizados no briefing", () => {
+    expect(parseCarouselTemplateFields('{"keyMessage":"Guia de escolha","audience":"Projetistas","invalid":"ignorar"}')).toEqual({ keyMessage: "Guia de escolha", audience: "Projetistas" });
+    const carousel = guidedServiceCatalog.find(item => item.key === "carousel")!;
+    const briefing = buildGuidedBriefing(carousel, { keyMessage: "Guia", audience: "Projetistas", slideCount: "4", format: "Vertical", visualDirection: "Minimal", callToAction: "Salve" }, [{ id: 1, name: "Logo aprovado", assetType: "logo", assetUrl: "https://example.com/logo.png", status: "authorized" }]);
+    expect(briefing).toContain("Referências visuais autorizadas: Logo aprovado (logo)");
   });
 
   it("expõe provedores configuráveis e mantém a publicação externa sob decisão humana", () => {

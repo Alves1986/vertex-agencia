@@ -404,6 +404,46 @@ export const contentBriefs = mysqlTable(
   table => [index("content_briefs_client_idx").on(table.clientId), index("content_briefs_campaign_idx").on(table.campaignId), index("content_briefs_owner_idx").on(table.ownerUserId)],
 );
 
+export const carouselBriefTemplates = mysqlTable(
+  "carousel_brief_templates",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: varchar("description", { length: 500 }),
+    fieldsJson: text("fieldsJson").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("carousel_brief_templates_client_name_unique").on(table.clientId, table.name),
+    index("carousel_brief_templates_owner_client_idx").on(table.ownerUserId, table.clientId),
+  ],
+);
+
+export const clientBrandAssets = mysqlTable(
+  "client_brand_assets",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 220 }).notNull(),
+    assetType: mysqlEnum("assetType", ["logo", "product", "reference", "palette", "other"]).default("reference").notNull(),
+    storageKey: varchar("storageKey", { length: 1000 }).notNull(),
+    assetUrl: varchar("assetUrl", { length: 1200 }).notNull(),
+    mimeType: varchar("mimeType", { length: 120 }).notNull(),
+    byteSize: int("byteSize").notNull(),
+    status: mysqlEnum("status", ["authorized", "archived"]).default("authorized").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("client_brand_assets_owner_client_idx").on(table.ownerUserId, table.clientId),
+    index("client_brand_assets_client_status_idx").on(table.clientId, table.status),
+  ],
+);
+
 export const trendSignals = mysqlTable(
   "trend_signals",
   {

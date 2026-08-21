@@ -177,3 +177,11 @@
 - [x] Refinar as perguntas dinâmicas do briefing de carrossel com validação de campos essenciais.
 - [x] Confirmar que o botão de iniciar criação aciona a capacidade de carrossel com o contexto do cliente selecionado.
 - [x] Cobrir e revisar visualmente a jornada completa de criação de carrossel até o rascunho revisável.
+- [x] Modelar modelos de briefing de carrossel isolados por cliente, com campos estruturados e ações protegidas de salvar, listar, carregar e remover.
+- [x] Modelar referências visuais de marca por cliente com URL de armazenamento, metadados, estado de autorização e auditoria.
+- [x] Adicionar contratos protegidos para modelos e referências, bloqueando leitura ou alteração entre clientes.
+- [x] Criar prévia editável dos slides do carrossel antes da geração final, com edição de texto, direção visual e ordem.
+- [x] Permitir salvar o briefing atual como modelo e carregar um modelo de carrossel no assistente de serviço.
+- [x] Permitir envio seguro de ativos de marca à biblioteca e seleção dos itens autorizados no briefing de carrossel.
+- [x] Cobrir persistência, isolamento, edição de prévia, modelos e biblioteca com testes de contrato e interface.
+- [x] Documentar a operação da prévia, dos modelos e dos ativos de marca autorizados.
