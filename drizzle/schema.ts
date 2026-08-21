@@ -841,6 +841,26 @@ export const whatsappAuditLogs = mysqlTable(
   table => [index("whatsapp_audit_logs_client_created_idx").on(table.clientId, table.createdAt)],
 );
 
+/** Metadados auditáveis de relatórios enviados; o conteúdo e o anexo não são persistidos. */
+export const approvalHistoryEmailDeliveries = mysqlTable(
+  "approval_history_email_deliveries",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    campaignId: int("campaignId").notNull().references(() => adCampaigns.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    actorUserId: int("actorUserId").references(() => users.id, { onDelete: "set null" }),
+    recipientEmail: varchar("recipientEmail", { length: 320 }).notNull(),
+    subject: varchar("subject", { length: 500 }).notNull(),
+    filtersJson: text("filtersJson").notNull(),
+    recordCount: int("recordCount").notNull(),
+    status: mysqlEnum("status", ["sent", "failed"]).notNull(),
+    providerMessageId: varchar("providerMessageId", { length: 255 }),
+    failureCode: varchar("failureCode", { length: 120 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("approval_history_email_campaign_created_idx").on(table.campaignId, table.createdAt), index("approval_history_email_client_created_idx").on(table.clientId, table.createdAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Client = typeof clients.$inferSelect;
@@ -873,3 +893,4 @@ export type WhatsappAutomationExecution = typeof whatsappAutomationExecutions.$i
 export type SaasPlan = typeof saasPlans.$inferSelect;
 export type SaasSubscription = typeof saasSubscriptions.$inferSelect;
 export type WhatsappAuditLog = typeof whatsappAuditLogs.$inferSelect;
+export type ApprovalHistoryEmailDelivery = typeof approvalHistoryEmailDeliveries.$inferSelect;

@@ -65,3 +65,28 @@ O download contém somente o histórico da campanha selecionada, limitado ao esp
 ### Evidência complementar
 
 Os filtros por responsável e período, a serialização CSV em UTF-8, a assinatura PDF e o contrato protegido de exportação foram verificados por testes automatizados. No conjunto de dados usado para a revisão visual não havia campanha persistida; por isso, os controles de exportação não foram materializados nas capturas, sem prejuízo à validação dos formatos e da responsividade geral da página.
+
+## Enviar o relatório PDF por e-mail
+
+Na tela **Histórico de aprovações**, aplique os filtros de responsável, decisão e período que devem compor o documento. Depois, escolha **Enviar por e-mail**. A plataforma mostra o endereço de contato cadastrado para o cliente e exige uma segunda confirmação antes de transmitir qualquer informação para fora do sistema.
+
+| Controle | Comportamento |
+|---|---|
+| Destinatário | É somente leitura e vem do e-mail de contato registrado no cliente da campanha |
+| PDF enviado | Reproduz exatamente os filtros ativos, com no máximo 500 eventos |
+| Modelo de mensagem | Apresenta a campanha, o recorte aplicado, a quantidade de decisões e a assinatura VERTEX Consulting |
+| Auditoria | Registra campanha, destinatário, filtros, volume, resultado e identificador do provedor; não guarda PDF, corpo da mensagem ou credenciais |
+| Confirmação | O envio externo só ocorre após o clique em **Confirmar envio** no diálogo de confirmação |
+
+O e-mail acompanha o PDF com a saudação ao contato cadastrado, um resumo dos critérios e a orientação para responder à equipe VERTEX Consulting caso seja necessário alinhar algum ponto. Nenhuma chave de IA é incluída no anexo ou na mensagem.
+
+## Validação desta evolução
+
+Em 21 de agosto de 2026, a página Agência IA foi revisada nas larguras **1280 × 720** e **375 × 812**. O menu lateral compacto, a orquestração por cliente, o seletor de serviços e as áreas de revisão permaneceram legíveis nos dois formatos. Como a campanha de validação não possui versões aprováveis persistidas, os controles de histórico e confirmação não eram materializáveis na captura; sua lógica foi validada por testes de componente, contratos protegidos e gerador de e-mail isolado.
+
+| Verificação | Resultado |
+|---|---|
+| Filtro de decisão e exportações | Aplicados na fonte auditável e propagados para PDF, CSV e e-mail |
+| Modelo de e-mail e anexo | Testados com provedor simulado, sem disparar mensagem real |
+| Proteção de destinatário | Coberta pelo contrato: somente o contato do cliente da campanha é aceito |
+| Suíte e build | 131 testes aprovados em 29 arquivos; build de produção concluído |

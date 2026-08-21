@@ -8,7 +8,7 @@ export type ApprovalHistoryExportInput = {
   campaignId: number;
   campaignName: string;
   entries: CampaignApprovalHistoryEntry[];
-  filters: { reviewerName?: string | null; startDate?: string; endDate?: string };
+  filters: { reviewerName?: string | null; decision?: CampaignApprovalHistoryEntry["decision"]; startDate?: string; endDate?: string };
 };
 
 export type ApprovalHistoryExport = {
@@ -35,7 +35,7 @@ function csvCell(value: string | number | null | undefined) {
 }
 
 function formatCriteria(filters: ApprovalHistoryExportInput["filters"]) {
-  const criteria = [filters.reviewerName ? `Responsável: ${filters.reviewerName}` : "Responsável: todos", filters.startDate ? `De: ${filters.startDate}` : null, filters.endDate ? `Até: ${filters.endDate}` : null].filter(Boolean);
+  const criteria = [filters.reviewerName ? `Responsável: ${filters.reviewerName}` : "Responsável: todos", filters.decision ? `Decisão: ${decisionLabel(filters.decision)}` : "Decisão: todas", filters.startDate ? `De: ${filters.startDate}` : null, filters.endDate ? `Até: ${filters.endDate}` : null].filter(Boolean);
   return criteria.join(" · ");
 }
 

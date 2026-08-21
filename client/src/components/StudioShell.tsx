@@ -1,8 +1,9 @@
 import { trpc } from "@/lib/trpc";
-import { Bell, ChevronDown, LayoutDashboard, ListFilter, Loader2, MessageCircleMore, Plus, SlidersHorizontal, Sparkles, SquareKanban, UsersRound, Workflow, WandSparkles } from "lucide-react";
+import { Bell, ChevronDown, LayoutDashboard, ListFilter, Loader2, Menu, MessageCircleMore, Plus, SlidersHorizontal, Sparkles, SquareKanban, UsersRound, Workflow, WandSparkles, X } from "lucide-react";
 import { getNotificationTarget } from "@/lib/notificationTarget";
 import React, { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
+import "./studio-shell.css";
 
 export const vertexLogo = "/manus-storage/vertex-consulting-logo_4cdb7d6a.png";
 
@@ -10,13 +11,13 @@ export function VertexBrand() {
   return <><img src={vertexLogo} alt="Logo VERTEX" /><span><b>VERTEX</b><small>Consulting</small></span></>;
 }
 
-const links = [
-  { href: "/", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/projetos", label: "Projetos", icon: SquareKanban },
-  { href: "/producao", label: "Produção", icon: Workflow },
-  { href: "/agencia", label: "Agência IA", icon: WandSparkles },
-  { href: "/atendimento", label: "Atendimento", icon: MessageCircleMore },
+export const navigationGroups = [
+  { label: "Visão", links: [{ href: "/", label: "Visão geral", icon: LayoutDashboard }] },
+  { label: "Operação", links: [{ href: "/projetos", label: "Projetos", icon: SquareKanban }, { href: "/producao", label: "Produção", icon: Workflow }] },
+  { label: "Inteligência e clientes", links: [{ href: "/agencia", label: "Agência IA", icon: WandSparkles }, { href: "/atendimento", label: "Atendimento", icon: MessageCircleMore }] },
 ];
+
+const links = navigationGroups.flatMap(group => group.links);
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -26,6 +27,7 @@ export function StudioShell({ title, eyebrow, actions, children }: { title: stri
   const [location, setLocation] = useLocation();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const utils = trpc.useUtils();
   const clients = trpc.workspace.clients.useQuery();
   const teams = trpc.workspace.teams.useQuery();
@@ -45,18 +47,19 @@ export function StudioShell({ title, eyebrow, actions, children }: { title: stri
   const activeClient = preferences.data?.activeClientId ?? null;
   const activeTeam = preferences.data?.activeTeamId ?? null;
   return (
-    <div className="ops-app">
-      <aside className="ops-sidebar" aria-label="Navegação principal">
+    <div className={sidebarOpen ? "ops-app is-sidebar-open" : "ops-app"}>
+      <button type="button" className="ops-sidebar-toggle" aria-label={sidebarOpen ? "Fechar menu" : "Abrir menu"} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(open => !open)}>{sidebarOpen ? <X size={18} /> : <Menu size={18} />}</button>
+      <aside className={sidebarOpen ? "ops-sidebar is-open" : "ops-sidebar"} aria-label="Navegação principal">
         <Link href="/" className="ops-brand ops-brand-vertex" aria-label="VERTEX Consulting — Centro de comando">
           <VertexBrand />
         </Link>
         <div className="ops-sidebar-caption">Centro de comando</div>
         <nav className="ops-nav">
-          {links.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={isActive(location, href) ? "ops-nav-link is-active" : "ops-nav-link"}>
+          {navigationGroups.map(group => <div className="ops-nav-group" key={group.label}><p>{group.label}</p>{group.links.map(({ href, label, icon: Icon }) => (
+            <Link key={href} href={href} onClick={() => setSidebarOpen(false)} className={isActive(location, href) ? "ops-nav-link is-active" : "ops-nav-link"}>
               <Icon size={18} /> <span>{label}</span>
             </Link>
-          ))}
+          ))}</div>)}
         </nav>
         <div className="ops-sidebar-bottom">
           <div className="ops-signal"><Sparkles size={15} /><span>Dados reais, ritmo real.</span></div>

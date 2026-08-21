@@ -13,4 +13,10 @@ describe("histórico de aprovações", () => {
     expect(blob.type).toBe("text/csv;charset=utf-8");
     await expect(blob.text()).resolves.toBe("histórico seguro");
   });
+
+  it("mantém aprovado e rejeitado como tipos de decisão distintos para filtros auditáveis", () => {
+    expect(approvalHistoryDecisionLabel("approved")).not.toBe(approvalHistoryDecisionLabel("rejected"));
+    expect(approvalHistoryDecisionLabel("approved")).toBe("Aprovada");
+    expect(approvalHistoryDecisionLabel("rejected")).toBe("Rejeitada");
+  });
 });

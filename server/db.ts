@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or } from "drizzle
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   adCampaigns,
+  approvalHistoryEmailDeliveries,
   aiGenerations,
   calendarEvents,
   carouselSlideApprovalBatches,
@@ -1512,7 +1513,7 @@ export type CampaignApprovalHistoryEntry = {
 };
 
 /** Linha do tempo auditável da campanha, limitada ao proprietário da operação. */
-export async function listCampaignApprovalHistory(userId: number, campaignId: number, filters?: { reviewerUserId?: number; startDate?: string; endDate?: string }): Promise<CampaignApprovalHistoryEntry[]> {
+export async function listCampaignApprovalHistory(userId: number, campaignId: number, filters?: { reviewerUserId?: number; decision?: CampaignApprovalHistoryEntry["decision"]; startDate?: string; endDate?: string }): Promise<CampaignApprovalHistoryEntry[]> {
   const db = await requireDb();
   const campaign = await getAdCampaign(userId, campaignId);
   if (!campaign) return [];
@@ -1538,7 +1539,36 @@ export async function listCampaignApprovalHistory(userId: number, campaignId: nu
   ].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
   const startAt = filters?.startDate ? new Date(`${filters.startDate}T00:00:00.000Z`) : null;
   const endAt = filters?.endDate ? new Date(`${filters.endDate}T23:59:59.999Z`) : null;
-  return entries.filter(entry => (!filters?.reviewerUserId || entry.reviewerUserId === filters.reviewerUserId) && (!startAt || entry.createdAt >= startAt) && (!endAt || entry.createdAt <= endAt));
+  return entries.filter(entry => (!filters?.reviewerUserId || entry.reviewerUserId === filters.reviewerUserId) && (!filters?.decision || entry.decision === filters.decision) && (!startAt || entry.createdAt >= startAt) && (!endAt || entry.createdAt <= endAt));
+}
+
+/** Persiste somente metadados da entrega; nunca o conteúdo do PDF, corpo de e-mail ou credenciais. */
+export async function recordApprovalHistoryEmailDelivery(userId: number, input: {
+  campaignId: number;
+  recipientEmail: string;
+  subject: string;
+  filtersJson: string;
+  recordCount: number;
+  status: "sent" | "failed";
+  providerMessageId?: string | null;
+  failureCode?: string | null;
+}) {
+  const db = await requireDb();
+  const campaign = await getAdCampaign(userId, input.campaignId);
+  if (!campaign) throw new Error("Campanha não encontrada neste espaço de trabalho");
+  const [created] = await db.insert(approvalHistoryEmailDeliveries).values({
+    campaignId: input.campaignId,
+    clientId: campaign.client.id,
+    actorUserId: userId,
+    recipientEmail: input.recipientEmail,
+    subject: input.subject,
+    filtersJson: input.filtersJson,
+    recordCount: input.recordCount,
+    status: input.status,
+    providerMessageId: input.providerMessageId || null,
+    failureCode: input.failureCode || null,
+  }).$returningId();
+  return created.id;
 }
 
 export async function listCarouselSlides(userId: number, campaignId: number) {

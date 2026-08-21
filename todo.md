@@ -200,3 +200,9 @@
 - [x] Implementar exportação em CSV do histórico filtrado, com conteúdo seguro para compartilhamento.
 - [x] Implementar exportação em PDF do histórico filtrado, com identificação da campanha e critérios aplicados.
 - [x] Cobrir filtros e exportações com testes automatizados, validar os arquivos gerados e documentar o envio ao cliente.
+- [x] Adicionar filtro por tipo de decisão ao histórico de aprovações, incluindo aprovado e rejeitado.
+- [x] Reorganizar o menu lateral por áreas funcionais, preservando as rotas e o acesso responsivo.
+- [x] Criar um fluxo protegido para enviar o PDF do histórico ao e-mail do cliente, com destinatário visível e confirmação explícita antes do despacho.
+- [x] Registrar as tentativas de envio de relatório sem expor o conteúdo, dados de acesso ou outras informações de clientes.
+- [x] Cobrir filtro, navegação reorganizada e envio de relatório por e-mail com testes e documentação operacional.
+- [x] Criar um modelo profissional de e-mail para acompanhar o relatório PDF, com dados dinâmicos da campanha e do período filtrado.
