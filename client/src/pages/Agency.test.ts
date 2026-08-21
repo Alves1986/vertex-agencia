@@ -15,7 +15,7 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-import { agencyModeOptions, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
+import { agencyModeOptions, buildGuidedBriefing, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, guidedServiceCatalog, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
 
 describe("modos da Agência IA", () => {
   it("mantém fluxos integrados e separados para o mesmo briefing", () => {
@@ -23,6 +23,23 @@ describe("modos da Agência IA", () => {
     expect(agencyModeOptions.bundle.label).toBe("Campanha integrada");
     expect(agencyModeOptions.carousel.description).toContain("artes independentes");
     expect(agencyModeOptions.council.description).toContain("risco humano");
+  });
+
+  it("expõe serviços guiados com perguntas próprias para criação de marketing", () => {
+    expect(guidedServiceCatalog.map(item => item.key)).toEqual(["bundle", "ads", "carousel", "video", "strategy", "council"]);
+    expect(guidedServiceCatalog.find(item => item.key === "carousel")?.fields.map(field => field.key)).toContain("slideCount");
+    expect(guidedServiceCatalog.find(item => item.key === "video")?.capability).toBe("Roteiro audiovisual");
+    expect(guidedServiceCatalog.find(item => item.key === "council")?.fields.map(field => field.key)).toContain("options");
+  });
+
+  it("estrutura o briefing guiado e mantém a entrega sujeita à revisão humana", () => {
+    const carousel = guidedServiceCatalog.find(item => item.key === "carousel");
+    expect(carousel).toBeDefined();
+    const briefing = buildGuidedBriefing(carousel!, { keyMessage: "Como escolher um acabamento durável", audience: "Arquitetos", slideCount: "7" });
+    expect(briefing).toContain("Serviço selecionado: Carrossel");
+    expect(briefing).toContain("Capacidade ativada: Narrativa para carrossel");
+    expect(briefing).toContain("Quantidade desejada de slides: 7");
+    expect(briefing).toContain("revisão humana");
   });
 
   it("expõe provedores configuráveis e mantém a publicação externa sob decisão humana", () => {

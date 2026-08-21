@@ -157,3 +157,10 @@
 - [x] Permitir atualizar ou trocar o provedor de um canal existente sem expor credenciais nem misturar conversas de clientes distintos.
 - [x] Adicionar cenários explícitos de teste para bloqueio entre clientes e entre o portal do cliente e a administração da agência.
 - [x] Documentar a cobertura complementar de webhooks, troca de conectores e isolamento multicliente.
+- [x] Mapear os serviços de marketing disponíveis e os campos mínimos de briefing de cada entrega.
+- [x] Criar um fluxo guiado que permita selecionar cliente, tipo de serviço e modo de criação antes de iniciar o projeto.
+- [x] Conectar anúncios, carrosséis, roteiros e estratégia ao gerador existente preservando o cliente e a credencial selecionados.
+- [x] Exibir perguntas e campos condicionais por serviço, com validação antes de criar o briefing ou disparar a geração.
+- [x] Manter o resultado inicial em rascunho sujeito à revisão humana, sem publicação externa automática.
+- [x] Cobrir seleção de serviço, campos condicionais, início seguro e contexto de cliente com testes de contrato e interface.
+- [x] Documentar o fluxo de criação guiada para a operação da agência.

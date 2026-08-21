@@ -45,6 +45,28 @@ describe("agency generation review contracts", () => {
     expect(mocks.completeAiGeneration).toHaveBeenCalledWith(7, 41, expect.objectContaining({ status: "succeeded" }));
   });
 
+  it("preserva o modo de serviço guiado no briefing e o devolve para retomar a criação correta", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.createAdCampaign.mockResolvedValue(31);
+    mocks.getClientAgencyProfile.mockResolvedValue(null);
+    mocks.listClientAiConnections.mockResolvedValue([]);
+    mocks.listAdCampaigns.mockResolvedValue([
+      { campaign: { id: 31, clientId: 3, mode: "bundle", briefingJson: JSON.stringify({ text: "Briefing de roteiro", generationMode: "video", serviceKey: "video" }) }, client: { name: "Globo Acabamentos" }, connection: null },
+      { campaign: { id: 32, clientId: 3, mode: "ads", briefingJson: "Briefing legado" }, client: { name: "Globo Acabamentos" }, connection: null },
+    ]);
+    mocks.listAgencyBriefs.mockResolvedValue([]);
+    mocks.listTrendSignals.mockResolvedValue([]);
+    mocks.listVideoScripts.mockResolvedValue([]);
+    mocks.listStrategyDecisions.mockResolvedValue([]);
+
+    const caller = agencyRouter.createCaller(createContext());
+    await expect(caller.createCampaign({ clientId: 3, name: "Roteiro de lançamento", objective: "Apresentar coleção", briefing: "Gancho e cenas aprovadas para o vídeo", mode: "bundle", generationMode: "video", serviceKey: "video" })).resolves.toEqual({ id: 31 });
+    const overview = await caller.overview({ clientId: 3 });
+
+    expect(mocks.createAdCampaign).toHaveBeenCalledWith(7, expect.objectContaining({ mode: "bundle", briefingJson: expect.stringContaining('"generationMode":"video"') }));
+    expect(overview.campaigns.map(item => item.generationMode)).toEqual(["video", "ads"]);
+  });
+
   it("registra decisões humanas e lista o histórico somente pelo contrato protegido", async () => {
     mocks.getOperationalUserId.mockResolvedValue(7);
     mocks.listCreativeVersions.mockResolvedValue([{ id: 93, campaignId: 11, versionNumber: 1, status: "review" }]);

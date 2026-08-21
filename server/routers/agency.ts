@@ -51,6 +51,16 @@ function toCreativeKind(mode: AgencyGenerationMode) {
   return mode === "ads" ? "ads" : mode === "carousel" ? "carousel" : mode === "video" ? "video" : mode === "strategy" || mode === "council" ? "strategy" : "bundle" as const;
 }
 
+function getStoredGenerationMode(briefingJson: string, fallback: "ads" | "carousel" | "bundle"): AgencyGenerationMode {
+  try {
+    const parsed = JSON.parse(briefingJson) as { generationMode?: unknown };
+    if (parsed.generationMode === "ads" || parsed.generationMode === "carousel" || parsed.generationMode === "bundle" || parsed.generationMode === "strategy" || parsed.generationMode === "video" || parsed.generationMode === "council") return parsed.generationMode;
+  } catch {
+    // Campanhas anteriores podem conter texto puro; o modo persistido continua sendo seguro.
+  }
+  return fallback;
+}
+
 function toPublicConnection<T extends object>(connection: T): T {
   const publicConnection = { ...connection } as T & { encryptedApiKey?: unknown; apiKey?: unknown; secret?: unknown };
   delete publicConnection.encryptedApiKey;
@@ -72,7 +82,15 @@ export const agencyRouter = router({
     const [profile, connections, campaigns, briefs, trends, videos, decisions] = await Promise.all([
       getClientAgencyProfile(userId, input.clientId), listClientAiConnections(userId, input.clientId), listAdCampaigns(userId, input.clientId), listAgencyBriefs(userId, input.clientId), listTrendSignals(userId, input.clientId), listVideoScripts(userId, input.clientId), listStrategyDecisions(userId, input.clientId),
     ]);
-    return { profile, connections: connections.map(toPublicConnection), campaigns: campaigns.map(toPublicCampaign), briefs, trends, videos, decisions };
+    return {
+      profile,
+      connections: connections.map(toPublicConnection),
+      campaigns: campaigns.map(item => ({ ...toPublicCampaign(item), generationMode: getStoredGenerationMode(item.campaign.briefingJson, item.campaign.mode) })),
+      briefs,
+      trends,
+      videos,
+      decisions,
+    };
   }),
 
   credentialStatuses: protectedProcedure.query(async ({ ctx }) => {
@@ -150,9 +168,9 @@ export const agencyRouter = router({
     return { id: await createTrendSignal(userId, { ...input, sourceUrl: input.sourceUrl || null, reactionNotes: input.reactionNotes || null, score: input.score ?? null }) };
   }),
 
-  createCampaign: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), providerConnectionId: z.number().int().positive().optional(), name: z.string().trim().min(3).max(220), mode: z.enum(["ads", "carousel", "bundle"]), objective: z.string().trim().min(3).max(240), briefing: z.string().trim().min(10).max(20000) })).mutation(async ({ ctx, input }) => {
+  createCampaign: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), providerConnectionId: z.number().int().positive().optional(), name: z.string().trim().min(3).max(220), mode: z.enum(["ads", "carousel", "bundle"]), generationMode: modeSchema.optional(), serviceKey: z.string().trim().min(2).max(80).optional(), objective: z.string().trim().min(3).max(240), briefing: z.string().trim().min(10).max(20000) })).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
-    return { id: await createAdCampaign(userId, { ...input, providerConnectionId: input.providerConnectionId || null, briefingJson: JSON.stringify({ text: input.briefing }) }) };
+    return { id: await createAdCampaign(userId, { ...input, providerConnectionId: input.providerConnectionId || null, briefingJson: JSON.stringify({ text: input.briefing, generationMode: input.generationMode || input.mode, serviceKey: input.serviceKey || null }) }) };
   }),
 
   updateCampaignProvider: protectedProcedure.input(z.object({ campaignId: z.number().int().positive(), providerConnectionId: z.number().int().positive().nullable() })).mutation(async ({ ctx, input }) => {
