@@ -127,7 +127,16 @@
 - [x] Cobrir no contrato a remoção explícita do limite mensal por valor nulo.
 - [x] Definir a arquitetura multicliente de atendimento por WhatsApp com IA, incluindo isolamento de clientes, papéis e limites operacionais.
 - [x] Modelar canais WhatsApp, contatos, conversas, mensagens, automações, auditoria, planos anuais e assinaturas.
-- [ ] Integrar o provedor oficial de WhatsApp, recebimento seguro de webhooks e envio de mensagens com regras de consentimento.
+- [x] Integrar o provedor oficial de WhatsApp, recebimento seguro de webhooks e envio de mensagens com regras de consentimento.
+- [x] Criar despacho administrativo idempotente para rascunhos aprovados, com atualização de status e auditoria de entrega.
+- [x] Bloquear despacho sem opt-in, fora da janela aplicável, com canal inativo ou sem configuração cifrada válida.
+- [x] Reutilizar os adaptadores oficiais Meta e Twilio sem expor segredos ou permitir envio pelo portal do cliente.
+- [x] Expor na inbox da agência a aprovação e a tentativa de envio, preservando rascunhos e handoff como caminhos de revisão.
+- [x] Cobrir despacho bem-sucedido, bloqueios, falhas do provedor, idempotência e autorização em testes sem credenciais reais.
+- [x] Documentar a ativação manual de credenciais e o checklist de produção para entrega externa.
+- [x] Cobrir em contrato que somente a agência administrativa possa aprovar e despachar rascunhos de WhatsApp.
+- [x] Cobrir idempotência do fluxo de aprovação, garantindo que reenvios não chamem Meta ou Twilio novamente.
+- [x] Cobrir em testes os bloqueios de opt-in, janela de 24 horas, canal inativo e configuração cifrada ausente.
 - [x] Oferecer escolha por cliente entre chave própria de IA e IA gerenciada pela VERTEX com controle de consumo e margens.
 - [x] Criar painéis de administração de canais, IA, caixa de entrada, escalonamento humano e histórico de conversas.
 - [x] Preparar cobrança anual, limites por plano e ciclo de assinatura SaaS sem expor dados de pagamento.

@@ -39,6 +39,7 @@ import {
   whatsappWebhookEvents,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { encryptProviderKey, getKeyHint } from "./aiAds/crypto";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let testDbOverride: ReturnType<typeof drizzle> | null = null;
@@ -685,6 +686,23 @@ export async function updateWhatsAppChannelProvider(userId: number, input: { cli
   return input.channelId;
 }
 
+export async function configureWhatsAppChannel(userId: number, input: { clientId: number; channelId: number; config: Record<string, string | undefined> }) {
+  const db = await requireDb();
+  await assertOwnedWhatsappClient(userId, input.clientId);
+  const channel = (await db.select({ id: whatsappChannels.id, provider: whatsappChannels.provider }).from(whatsappChannels).where(and(eq(whatsappChannels.id, input.channelId), eq(whatsappChannels.clientId, input.clientId), eq(whatsappChannels.ownerUserId, userId))).limit(1))[0];
+  if (!channel) throw new Error("O canal selecionado não pertence a este cliente.");
+  const config = channel.provider === "meta_cloud"
+    ? { accessToken: input.config.accessToken?.trim() || "", verifyToken: input.config.verifyToken?.trim() || "", phoneNumberId: input.config.phoneNumberId?.trim() || "", graphVersion: input.config.graphVersion?.trim() || "v20.0" }
+    : { accountSid: input.config.accountSid?.trim() || "", authToken: input.config.authToken?.trim() || "", messagingServiceSid: input.config.messagingServiceSid?.trim() || undefined, from: input.config.from?.trim() || "" };
+  const required = channel.provider === "meta_cloud" ? [config.accessToken, config.verifyToken, config.phoneNumberId] : [config.accountSid, config.authToken, config.from || config.messagingServiceSid];
+  if (required.some(value => !value)) throw new Error("Preencha todas as credenciais obrigatórias para este provedor.");
+  const secretForHint = channel.provider === "meta_cloud" ? config.accessToken : config.authToken;
+  if (!secretForHint) throw new Error("A credencial principal do canal é obrigatória.");
+  await db.update(whatsappChannels).set({ encryptedConfig: encryptProviderKey(JSON.stringify(config)), configHint: getKeyHint(secretForHint), status: "verification_pending", verifiedAt: null, lastError: null }).where(eq(whatsappChannels.id, input.channelId));
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "whatsapp.channel_credentials_configured", entityType: "whatsapp_channel", entityId: input.channelId, detailsJson: JSON.stringify({ provider: channel.provider, secretStored: "encrypted", externalDelivery: "disabled_until_activation" }) });
+  return input.channelId;
+}
+
 export async function getWhatsAppAiPolicy(userId: number, clientId: number) {
   const db = await requireDb();
   await assertOwnedWhatsappClient(userId, clientId);
@@ -1161,6 +1179,70 @@ export async function createWhatsAppDraft(userId: number, input: { clientId: num
   const [created] = await db.insert(whatsappMessages).values({ clientId: input.clientId, channelId: conversation.channelId, conversationId: input.conversationId, direction: "outbound", authorType: "human", body: input.body, deliveryStatus: "queued" }).$returningId();
   await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "whatsapp.draft_created", entityType: "whatsapp_message", entityId: created.id, detailsJson: JSON.stringify({ externalDelivery: "disabled" }) });
   return created.id;
+}
+
+export type ApprovedWhatsAppDispatch = { state: "claimed"; messageId: number; clientId: number; channelId: number; provider: "meta_cloud" | "twilio"; encryptedConfig: string; destination: string; body: string } | { state: "already_processed"; deliveryStatus: "sent" | "delivered" | "read" | "failed"; providerMessageId: string | null };
+
+type ApprovedWhatsAppDispatchRow = {
+  messageId: number;
+  body: string | null;
+  direction: string;
+  deliveryStatus: string;
+  providerMessageId: string | null;
+  channelId: number;
+  provider: "meta_cloud" | "twilio";
+  channelStatus: string;
+  encryptedConfig: string | null;
+  destination: string | null;
+  optInStatus: string;
+  serviceWindowExpiresAt: Date | null;
+};
+
+/** Valida uma tentativa de entrega antes de alterar estado ou revelar configuração ao adaptador de servidor. */
+export function checkApprovedWhatsAppDispatchEligibility(row: ApprovedWhatsAppDispatchRow, now = Date.now()): { state: "ready" } | Extract<ApprovedWhatsAppDispatch, { state: "already_processed" }> {
+  if (row.direction !== "outbound") throw new Error("O rascunho selecionado não pertence a este cliente.");
+  if (row.deliveryStatus !== "queued") return { state: "already_processed", deliveryStatus: row.deliveryStatus as "sent" | "delivered" | "read" | "failed", providerMessageId: row.providerMessageId };
+  if (!row.body?.trim()) throw new Error("O rascunho não possui conteúdo para envio.");
+  if (row.channelStatus !== "active") throw new Error("O canal não está ativo para entrega externa.");
+  if (!row.encryptedConfig) throw new Error("O canal ainda não possui uma configuração cifrada válida.");
+  if (!row.destination) throw new Error("O contato não possui um número de WhatsApp válido para entrega.");
+  if (row.optInStatus !== "opted_in") throw new Error("O contato não possui consentimento explícito para receber mensagens automatizadas.");
+  if (!row.serviceWindowExpiresAt || row.serviceWindowExpiresAt.getTime() <= now) throw new Error("A janela de atendimento de 24 horas está encerrada; use um modelo aprovado pelo provedor.");
+  return { state: "ready" };
+}
+
+/** Reivindica um rascunho somente uma vez e devolve a configuração exclusivamente para o adaptador executado no servidor. */
+export async function claimApprovedWhatsAppDispatch(userId: number, input: { clientId: number; messageId: number }): Promise<ApprovedWhatsAppDispatch> {
+  await assertOwnedWhatsappClient(userId, input.clientId);
+  const db = await requireDb();
+  const row = (await db.select({ messageId: whatsappMessages.id, body: whatsappMessages.body, direction: whatsappMessages.direction, deliveryStatus: whatsappMessages.deliveryStatus, providerMessageId: whatsappMessages.providerMessageId, channelId: whatsappChannels.id, provider: whatsappChannels.provider, channelStatus: whatsappChannels.status, encryptedConfig: whatsappChannels.encryptedConfig, destination: whatsappContacts.phoneE164, optInStatus: whatsappContacts.optInStatus, serviceWindowExpiresAt: whatsappConversations.serviceWindowExpiresAt }).from(whatsappMessages).innerJoin(whatsappConversations, eq(whatsappConversations.id, whatsappMessages.conversationId)).innerJoin(whatsappContacts, eq(whatsappContacts.id, whatsappConversations.contactId)).innerJoin(whatsappChannels, eq(whatsappChannels.id, whatsappMessages.channelId)).where(and(eq(whatsappMessages.id, input.messageId), eq(whatsappMessages.clientId, input.clientId), eq(whatsappChannels.ownerUserId, userId))).limit(1))[0];
+  if (!row) throw new Error("O rascunho selecionado não pertence a este cliente.");
+  const eligibility = checkApprovedWhatsAppDispatchEligibility(row);
+  if (eligibility.state === "already_processed") return eligibility;
+  const claimed = await db.update(whatsappMessages).set({ deliveryStatus: "sent" }).where(and(eq(whatsappMessages.id, input.messageId), eq(whatsappMessages.deliveryStatus, "queued")));
+  if (!claimed[0].affectedRows) {
+    const current = (await db.select({ deliveryStatus: whatsappMessages.deliveryStatus, providerMessageId: whatsappMessages.providerMessageId }).from(whatsappMessages).where(eq(whatsappMessages.id, input.messageId)).limit(1))[0];
+    return { state: "already_processed", deliveryStatus: (current?.deliveryStatus ?? "failed") as "sent" | "delivered" | "read" | "failed", providerMessageId: current?.providerMessageId ?? null };
+  }
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "whatsapp.delivery_approved", entityType: "whatsapp_message", entityId: input.messageId, detailsJson: JSON.stringify({ channelId: row.channelId, provider: row.provider, consent: row.optInStatus, serviceWindow: "open" }) });
+  return { state: "claimed", messageId: row.messageId, clientId: input.clientId, channelId: row.channelId, provider: row.provider, encryptedConfig: row.encryptedConfig!, destination: row.destination!, body: row.body! };
+}
+
+export async function completeApprovedWhatsAppDispatch(userId: number, input: { clientId: number; messageId: number; channelId: number; providerMessageId: string; providerPayload: Record<string, unknown> }) {
+  await assertOwnedWhatsappClient(userId, input.clientId);
+  const db = await requireDb();
+  await db.update(whatsappMessages).set({ deliveryStatus: "sent", providerMessageId: input.providerMessageId, providerPayloadJson: JSON.stringify(input.providerPayload), occurredAt: new Date() }).where(and(eq(whatsappMessages.id, input.messageId), eq(whatsappMessages.clientId, input.clientId)));
+  await db.update(whatsappChannels).set({ lastOutboundAt: new Date(), lastError: null }).where(eq(whatsappChannels.id, input.channelId));
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "whatsapp.delivery_sent", entityType: "whatsapp_message", entityId: input.messageId, detailsJson: JSON.stringify({ channelId: input.channelId, providerMessageId: input.providerMessageId }) });
+}
+
+export async function failApprovedWhatsAppDispatch(userId: number, input: { clientId: number; messageId: number; channelId: number; reason: string }) {
+  await assertOwnedWhatsappClient(userId, input.clientId);
+  const db = await requireDb();
+  const safeReason = input.reason.slice(0, 500);
+  await db.update(whatsappMessages).set({ deliveryStatus: "failed", providerPayloadJson: JSON.stringify({ deliveryError: safeReason }) }).where(and(eq(whatsappMessages.id, input.messageId), eq(whatsappMessages.clientId, input.clientId)));
+  await db.update(whatsappChannels).set({ lastError: safeReason }).where(eq(whatsappChannels.id, input.channelId));
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "whatsapp.delivery_failed", entityType: "whatsapp_message", entityId: input.messageId, detailsJson: JSON.stringify({ channelId: input.channelId, reason: safeReason }) });
 }
 
 export async function listClientPortalMembers(ownerUserId: number, clientId: number) {

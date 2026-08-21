@@ -25,11 +25,17 @@ const mocks = vi.hoisted(() => ({
   grantClientPortalMember: vi.fn(),
   updateClientPortalMemberStatus: vi.fn(),
   getOperationalUserId: vi.fn(),
+  claimApprovedWhatsAppDispatch: vi.fn(),
+  completeApprovedWhatsAppDispatch: vi.fn(),
+  failApprovedWhatsAppDispatch: vi.fn(),
+  dispatchApprovedWhatsAppMessage: vi.fn(),
+  isWhatsAppExternalDeliveryEnabled: vi.fn(() => true),
 }));
 
 vi.mock("../db", () => mocks);
 vi.mock("./helpers", () => ({ getOperationalUserId: mocks.getOperationalUserId }));
 vi.mock("../stripe/billing", () => ({ createAnnualPlanCheckout: mocks.createAnnualPlanCheckout }));
+vi.mock("../whatsapp/delivery", () => ({ dispatchApprovedWhatsAppMessage: mocks.dispatchApprovedWhatsAppMessage, isWhatsAppExternalDeliveryEnabled: mocks.isWhatsAppExternalDeliveryEnabled }));
 
 import { whatsappRouter } from "./whatsapp";
 
@@ -167,5 +173,26 @@ describe("contratos de WhatsApp SaaS", () => {
     await expect(caller.saveDraft({ clientId: 3, conversationId: 41, body: "Vou verificar e retorno em breve." })).resolves.toEqual({ id: 101, externalDelivery: "disabled" });
     expect(mocks.activateWhatsAppHumanHandoff).toHaveBeenCalledWith(7, 3, 41);
     expect(mocks.createWhatsAppDraft).toHaveBeenCalledWith(7, expect.objectContaining({ clientId: 3, conversationId: 41 }));
+  });
+
+  it("reserva a aprovação e o despacho ao administrador da agência", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.claimApprovedWhatsAppDispatch.mockResolvedValue({ state: "claimed", messageId: 101, clientId: 3, channelId: 13, provider: "meta_cloud", encryptedConfig: "cipher", destination: "+5511999999999", body: "Retorno aprovado" });
+    mocks.dispatchApprovedWhatsAppMessage.mockResolvedValue({ providerMessageId: "wamid.101", providerPayload: { messages: [{ id: "wamid.101" }] } });
+    const caller = whatsappRouter.createCaller(createContext());
+    await expect(caller.approveAndSendDraft({ clientId: 3, messageId: 101 })).resolves.toEqual({ state: "sent", deliveryStatus: "sent", providerMessageId: "wamid.101" });
+    expect(mocks.claimApprovedWhatsAppDispatch).toHaveBeenCalledWith(7, { clientId: 3, messageId: 101 });
+    expect(mocks.completeApprovedWhatsAppDispatch).toHaveBeenCalledWith(7, expect.objectContaining({ clientId: 3, messageId: 101, providerMessageId: "wamid.101" }));
+    await expect(whatsappRouter.createCaller(createContext("user")).approveAndSendDraft({ clientId: 3, messageId: 101 })).rejects.toThrow("restritas à equipe da agência");
+    expect(mocks.claimApprovedWhatsAppDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("não repete uma chamada ao provedor ao receber a aprovação do mesmo rascunho", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.claimApprovedWhatsAppDispatch.mockResolvedValue({ state: "already_processed", deliveryStatus: "sent", providerMessageId: "wamid.101" });
+    const caller = whatsappRouter.createCaller(createContext());
+    await expect(caller.approveAndSendDraft({ clientId: 3, messageId: 101 })).resolves.toEqual({ state: "already_processed", deliveryStatus: "sent", providerMessageId: "wamid.101" });
+    expect(mocks.dispatchApprovedWhatsAppMessage).not.toHaveBeenCalled();
+    expect(mocks.completeApprovedWhatsAppDispatch).not.toHaveBeenCalled();
   });
 });

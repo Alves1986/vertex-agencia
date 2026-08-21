@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getClientPortalOverview, getCurrentMonthStart, listClientPortalConversationMessages, setDbForTests } from "./db";
+import { checkApprovedWhatsAppDispatchEligibility, getClientPortalOverview, getCurrentMonthStart, listClientPortalConversationMessages, setDbForTests } from "./db";
 
 function databaseWithSelectRows(rows: unknown[][]) {
   let index = 0;
@@ -40,5 +40,24 @@ describe("isolamento do portal de atendimento", () => {
     ]) as never);
 
     await expect(listClientPortalConversationMessages("usuario-cliente", { clientId: 2, conversationId: 700 })).rejects.toThrow("não pertence ao seu espaço de cliente");
+  });
+});
+
+describe("elegibilidade de entrega aprovada", () => {
+  const eligibleDraft = () => ({ messageId: 71, body: "Olá, posso ajudar?", direction: "outbound", deliveryStatus: "queued", providerMessageId: null, channelId: 8, provider: "meta_cloud" as const, channelStatus: "active", encryptedConfig: "cipher", destination: "+5511999999999", optInStatus: "opted_in", serviceWindowExpiresAt: new Date("2026-08-21T14:00:00Z") });
+  const now = new Date("2026-08-21T12:00:00Z").getTime();
+
+  it("bloqueia canal inativo ou sem configuração cifrada antes do adaptador", () => {
+    expect(() => checkApprovedWhatsAppDispatchEligibility({ ...eligibleDraft(), channelStatus: "draft" }, now)).toThrow("canal não está ativo");
+    expect(() => checkApprovedWhatsAppDispatchEligibility({ ...eligibleDraft(), encryptedConfig: null }, now)).toThrow("configuração cifrada válida");
+  });
+
+  it("bloqueia ausência de opt-in e janela de atendimento encerrada", () => {
+    expect(() => checkApprovedWhatsAppDispatchEligibility({ ...eligibleDraft(), optInStatus: "unknown" }, now)).toThrow("consentimento explícito");
+    expect(() => checkApprovedWhatsAppDispatchEligibility({ ...eligibleDraft(), serviceWindowExpiresAt: new Date("2026-08-21T11:59:59Z") }, now)).toThrow("janela de atendimento de 24 horas");
+  });
+
+  it("reconhece reaprovação como processamento já concluído sem deixar o rascunho pronto novamente", () => {
+    expect(checkApprovedWhatsAppDispatchEligibility({ ...eligibleDraft(), deliveryStatus: "sent", providerMessageId: "wamid.123" }, now)).toEqual({ state: "already_processed", deliveryStatus: "sent", providerMessageId: "wamid.123" });
   });
 });

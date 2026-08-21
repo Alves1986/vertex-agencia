@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
-import { activateWhatsAppHumanHandoff, calculateManagedAiQuote, createWhatsAppChannel, createWhatsAppDraft, getAnnualCheckoutContext, getClientPortalOverview, getManagedAiBillingOverview, getWhatsAppAiPolicy, grantClientPortalMember, listAnnualSaasPlans, listClientPortalConversationMessages, listClientPortalMembers, listClientPortalWorkspaces, listWhatsAppAutomationRules, listWhatsAppChannels, listWhatsAppConversationMessages, listWhatsAppInbox, updateClientPortalMemberStatus, updateWhatsAppChannelProvider, upsertAnnualSaasPlan, upsertWhatsAppAiPolicy, upsertWhatsAppAutomationRule } from "../db";
+import { activateWhatsAppHumanHandoff, calculateManagedAiQuote, claimApprovedWhatsAppDispatch, completeApprovedWhatsAppDispatch, configureWhatsAppChannel, createWhatsAppChannel, createWhatsAppDraft, failApprovedWhatsAppDispatch, getAnnualCheckoutContext, getClientPortalOverview, getManagedAiBillingOverview, getWhatsAppAiPolicy, grantClientPortalMember, listAnnualSaasPlans, listClientPortalConversationMessages, listClientPortalMembers, listClientPortalWorkspaces, listWhatsAppAutomationRules, listWhatsAppChannels, listWhatsAppConversationMessages, listWhatsAppInbox, updateClientPortalMemberStatus, updateWhatsAppChannelProvider, upsertAnnualSaasPlan, upsertWhatsAppAiPolicy, upsertWhatsAppAutomationRule } from "../db";
 import { getOperationalUserId } from "./helpers";
 import { createAnnualPlanCheckout } from "../stripe/billing";
+import { dispatchApprovedWhatsAppMessage, isWhatsAppExternalDeliveryEnabled } from "../whatsapp/delivery";
 
 const clientIdSchema = z.number().int().positive();
 const channelProviderSchema = z.enum(["meta_cloud", "twilio"]);
@@ -77,6 +78,8 @@ export const whatsappRouter = router({
     return { id: await updateWhatsAppChannelProvider(userId, input) };
   }),
 
+  configureChannel: agencyProcedure.input(z.object({ clientId: clientIdSchema, channelId: z.number().int().positive(), config: z.object({ accessToken: z.string().max(2000).optional(), verifyToken: z.string().max(500).optional(), phoneNumberId: z.string().max(300).optional(), graphVersion: z.string().max(40).optional(), accountSid: z.string().max(300).optional(), authToken: z.string().max(1000).optional(), messagingServiceSid: z.string().max(300).optional(), from: z.string().max(80).optional() }) })).mutation(async ({ ctx, input }) => ({ id: await configureWhatsAppChannel(await getOperationalUserId(ctx.user), input) })),
+
   policy: agencyProcedure.input(z.object({ clientId: clientIdSchema })).query(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     return getWhatsAppAiPolicy(userId, input.clientId);
@@ -148,6 +151,22 @@ export const whatsappRouter = router({
   saveDraft: agencyProcedure.input(z.object({ clientId: clientIdSchema, conversationId: z.number().int().positive(), body: z.string().trim().min(1).max(4000) })).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     return { id: await createWhatsAppDraft(userId, input), externalDelivery: "disabled" as const };
+  }),
+
+  approveAndSendDraft: agencyProcedure.input(z.object({ clientId: clientIdSchema, messageId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    if (!isWhatsAppExternalDeliveryEnabled()) throw new Error("A entrega externa continua desativada até a ativação controlada das credenciais da VERTEX.");
+    const userId = await getOperationalUserId(ctx.user);
+    const claimed = await claimApprovedWhatsAppDispatch(userId, input);
+    if (claimed.state === "already_processed") return { state: claimed.state, deliveryStatus: claimed.deliveryStatus, providerMessageId: claimed.providerMessageId };
+    try {
+      const result = await dispatchApprovedWhatsAppMessage(claimed);
+      await completeApprovedWhatsAppDispatch(userId, { clientId: input.clientId, messageId: claimed.messageId, channelId: claimed.channelId, ...result });
+      return { state: "sent" as const, deliveryStatus: "sent" as const, providerMessageId: result.providerMessageId };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Falha inesperada ao entregar a mensagem.";
+      await failApprovedWhatsAppDispatch(userId, { clientId: input.clientId, messageId: claimed.messageId, channelId: claimed.channelId, reason });
+      throw new Error("A entrega não foi concluída e o rascunho foi marcado como falho para revisão.");
+    }
   }),
 
   saveAutomation: agencyProcedure.input(z.object({
