@@ -67,6 +67,29 @@ describe("agency generation review contracts", () => {
     expect(overview.campaigns.map(item => item.generationMode)).toEqual(["video", "ads"]);
   });
 
+  it("ativa a capacidade de carrossel do serviço guiado e persiste seus slides para revisão", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.createAdCampaign.mockResolvedValue(44);
+    mocks.getAdCampaign.mockResolvedValue({ campaign: { id: 44, clientId: 3, providerConnectionId: null, briefingJson: JSON.stringify({ text: "Narrativa de 6 slides", generationMode: "carousel", serviceKey: "carousel" }), name: "Carrossel de acabamentos", objective: "Gerar salvamentos" }, client: { name: "Globo Acabamentos" } });
+    mocks.getClientAgencyProfile.mockResolvedValue(null);
+    mocks.buildAgencyPrompt.mockReturnValue("prompt de carrossel");
+    mocks.createAiGeneration.mockResolvedValue(54);
+    const carousel = [{ slideNumber: 1, role: "cover", headline: "Escolha seu acabamento", body: "Comece pela necessidade", visualDirection: "Tons minerais", imagePrompt: "Ambiente contemporâneo" }];
+    mocks.generateAgencyOutput.mockResolvedValue({ provider: "manus", model: "gpt-5-mini", output: { ads: [], carousel, strategy: null, video: null, council: null } });
+    mocks.createCreativeVersion.mockResolvedValue(94);
+    mocks.updateAdCampaignStatus.mockResolvedValue(undefined);
+    mocks.completeAiGeneration.mockResolvedValue(undefined);
+
+    const caller = agencyRouter.createCaller(createContext());
+    await expect(caller.createCampaign({ clientId: 3, name: "Carrossel de acabamentos", objective: "Gerar salvamentos", briefing: "Narrativa de 6 slides com visual mineral", mode: "carousel", generationMode: "carousel", serviceKey: "carousel" })).resolves.toEqual({ id: 44 });
+    await expect(caller.generate({ campaignId: 44, mode: "carousel" })).resolves.toMatchObject({ generationId: 54, versionId: 94 });
+
+    expect(mocks.createAdCampaign).toHaveBeenCalledWith(7, expect.objectContaining({ mode: "carousel", briefingJson: expect.stringContaining('"serviceKey":"carousel"') }));
+    expect(mocks.createAiGeneration).toHaveBeenCalledWith(7, expect.objectContaining({ campaignId: 44, kind: "carousel" }));
+    expect(mocks.replaceCarouselSlides).toHaveBeenCalledWith(7, 44, 54, carousel);
+    expect(mocks.createCreativeVersion).toHaveBeenCalledWith(7, expect.objectContaining({ campaignId: 44, kind: "carousel" }));
+  });
+
   it("registra decisões humanas e lista o histórico somente pelo contrato protegido", async () => {
     mocks.getOperationalUserId.mockResolvedValue(7);
     mocks.listCreativeVersions.mockResolvedValue([{ id: 93, campaignId: 11, versionNumber: 1, status: "review" }]);

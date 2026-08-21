@@ -173,3 +173,7 @@
 - [x] Manter o resultado inicial em rascunho sujeito à revisão humana, sem publicação externa automática.
 - [x] Cobrir seleção de serviço, campos condicionais, início seguro e contexto de cliente com testes de contrato e interface.
 - [x] Documentar o fluxo de criação guiada para a operação da agência.
+- [x] Confirmar no fluxo da Agência IA a seleção visível de cliente e do serviço Carrossel.
+- [x] Refinar as perguntas dinâmicas do briefing de carrossel com validação de campos essenciais.
+- [x] Confirmar que o botão de iniciar criação aciona a capacidade de carrossel com o contexto do cliente selecionado.
+- [x] Cobrir e revisar visualmente a jornada completa de criação de carrossel até o rascunho revisável.

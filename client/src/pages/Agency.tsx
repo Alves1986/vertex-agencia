@@ -13,8 +13,9 @@ type PublicationTarget = { id: number; title: string };
 type CampaignProviderTarget = { id: number; title: string };
 export type GuidedServiceKey = "bundle" | "ads" | "carousel" | "video" | "strategy" | "council";
 type GuidedFieldKey = "offer" | "audience" | "channel" | "keyMessage" | "callToAction" | "proof" | "slideCount" | "visualDirection" | "hook" | "duration" | "format" | "scenes" | "businessChallenge" | "marketContext" | "decision" | "options" | "risks";
-type GuidedField = { key: GuidedFieldKey; label: string; placeholder: string; required?: boolean; multiline?: boolean };
+type GuidedField = { key: GuidedFieldKey; label: string; placeholder: string; required?: boolean; multiline?: boolean; inputType?: "text" | "number"; min?: number; max?: number };
 export type GuidedService = { key: GuidedServiceKey; label: string; description: string; capability: string; generationMode: Mode; fields: GuidedField[] };
+type GuidedCampaignForm = { name: string; objective: string; connectionId: string };
 
 export const agencyModeOptions: Record<Mode, { label: string; description: string }> = {
   bundle: { label: "Campanha integrada", description: "Estratégia, anúncios, carrossel e roteiro no mesmo briefing." },
@@ -28,7 +29,7 @@ export const agencyModeOptions: Record<Mode, { label: string; description: strin
 export const guidedServiceCatalog: GuidedService[] = [
   { key: "bundle", label: "Campanha integrada", description: "Estratégia, anúncios, carrossel e roteiro a partir de uma única direção.", capability: "Orquestração de campanha", generationMode: "bundle", fields: [{ key: "offer", label: "Oferta prioritária", placeholder: "Produto, serviço ou condição que será comunicada", required: true }, { key: "audience", label: "Público que queremos mover", placeholder: "Quem precisa ser alcançado e qual contexto vive", required: true }, { key: "keyMessage", label: "Mensagem central", placeholder: "A ideia que precisa permanecer após o contato", required: true, multiline: true }, { key: "channel", label: "Canais planejados", placeholder: "Ex.: Instagram, Meta Ads, landing page" }, { key: "callToAction", label: "Ação esperada", placeholder: "Ex.: solicitar orçamento, iniciar conversa" }] },
   { key: "ads", label: "Anúncios", description: "Cria variações de texto, ângulos e chamadas para ação.", capability: "Redação de performance", generationMode: "ads", fields: [{ key: "offer", label: "Oferta ou produto", placeholder: "O que será anunciado", required: true }, { key: "audience", label: "Público prioritário", placeholder: "Perfil e dor ou desejo principal", required: true }, { key: "channel", label: "Canal de mídia", placeholder: "Ex.: Meta Ads, Google, LinkedIn", required: true }, { key: "proof", label: "Provas aprovadas", placeholder: "Fatos, diferenciais ou fontes que podem ser utilizados", multiline: true }, { key: "callToAction", label: "Chamada para ação", placeholder: "Ex.: peça uma proposta" }] },
-  { key: "carousel", label: "Carrossel", description: "Desenha uma narrativa editorial com arte e texto por slide.", capability: "Narrativa para carrossel", generationMode: "carousel", fields: [{ key: "keyMessage", label: "Ideia central do carrossel", placeholder: "A transformação, insight ou ensinamento a desenvolver", required: true, multiline: true }, { key: "audience", label: "Leitor prioritário", placeholder: "Quem deve parar para ler", required: true }, { key: "slideCount", label: "Quantidade desejada de slides", placeholder: "Ex.: 7" }, { key: "visualDirection", label: "Direção visual", placeholder: "Elementos, referências e restrições da arte", multiline: true }, { key: "callToAction", label: "Ação do último slide", placeholder: "Ex.: salve este post ou fale com a equipe" }] },
+  { key: "carousel", label: "Carrossel", description: "Desenha uma narrativa editorial com arte e texto por slide.", capability: "Narrativa para carrossel", generationMode: "carousel", fields: [{ key: "keyMessage", label: "Ideia central do carrossel", placeholder: "A transformação, insight ou ensinamento a desenvolver", required: true, multiline: true }, { key: "audience", label: "Leitor prioritário", placeholder: "Quem deve parar para ler", required: true }, { key: "slideCount", label: "Quantidade de slides", placeholder: "De 3 a 10", required: true, inputType: "number", min: 3, max: 10 }, { key: "format", label: "Formato e proporção", placeholder: "Ex.: Instagram vertical 1080 × 1350", required: true }, { key: "visualDirection", label: "Direção visual", placeholder: "Elementos, referências e restrições da arte", required: true, multiline: true }, { key: "callToAction", label: "Ação do último slide", placeholder: "Ex.: salve este post ou fale com a equipe", required: true }] },
   { key: "video", label: "Roteiro de vídeo", description: "Estrutura gancho, cenas, locução e plano de edição.", capability: "Roteiro audiovisual", generationMode: "video", fields: [{ key: "hook", label: "Gancho de abertura", placeholder: "Pergunta, tensão ou promessa dos primeiros segundos", required: true }, { key: "offer", label: "Tema, oferta ou demonstração", placeholder: "O assunto que o vídeo precisa desenvolver", required: true }, { key: "duration", label: "Duração desejada", placeholder: "Ex.: até 45 segundos" }, { key: "format", label: "Formato", placeholder: "Ex.: Reels vertical, institucional, depoimento autorizado" }, { key: "scenes", label: "Cenas, materiais ou restrições", placeholder: "O que já existe e o que não pode ser usado", multiline: true }] },
   { key: "strategy", label: "Estratégia", description: "Organiza posicionamento, público, ângulo e lacunas de evidência.", capability: "Planejamento estratégico", generationMode: "strategy", fields: [{ key: "businessChallenge", label: "Desafio de negócio", placeholder: "Qual decisão ou resultado precisa ser destravado", required: true, multiline: true }, { key: "audience", label: "Público prioritário", placeholder: "Quem será analisado", required: true }, { key: "marketContext", label: "Contexto de mercado", placeholder: "Concorrentes, sazonalidade e cenário atual", multiline: true }, { key: "proof", label: "Evidências disponíveis", placeholder: "Dados, fontes e premissas que podem sustentar a recomendação", multiline: true }] },
   { key: "council", label: "Conselho IA", description: "Compara lentes de decisão, recomendação e riscos a revisar.", capability: "Conselho de decisão", generationMode: "council", fields: [{ key: "decision", label: "Decisão que precisa ser tomada", placeholder: "A pergunta objetiva que a equipe precisa responder", required: true, multiline: true }, { key: "options", label: "Opções em análise", placeholder: "Alternativas que devem ser comparadas", required: true, multiline: true }, { key: "risks", label: "Riscos ou limites conhecidos", placeholder: "O que não pode ser ignorado", multiline: true }, { key: "proof", label: "Evidências e dados reais", placeholder: "Fontes, histórico e fatos disponíveis", multiline: true }] },
@@ -40,6 +41,32 @@ export function buildGuidedBriefing(service: GuidedService, answers: Partial<Rec
     .filter((item): item is { label: string; value: string } => Boolean(item.value))
     .map(item => `- ${item.label}: ${item.value}`);
   return [`Serviço selecionado: ${service.label}`, `Capacidade ativada: ${service.capability}`, ...details, "\nUse somente informações fornecidas. Marque lacunas como [FONTE PENDENTE] e mantenha a entrega em revisão humana."].join("\n");
+}
+
+export function getGuidedCreationValidation(service: GuidedService, campaign: GuidedCampaignForm, answers: Partial<Record<GuidedFieldKey, string>>) {
+  if (!campaign.name.trim()) return "Informe um nome para o projeto antes de iniciar a criação.";
+  if (!campaign.objective.trim()) return "Informe o objetivo da entrega antes de iniciar a criação.";
+  const missingField = service.fields.find(field => field.required && !answers[field.key]?.trim());
+  if (missingField) return `Preencha “${missingField.label}” para iniciar ${service.label.toLowerCase()}.`;
+  if (service.key === "carousel") {
+    const slideCount = Number(answers.slideCount);
+    if (!Number.isInteger(slideCount) || slideCount < 3 || slideCount > 10) return "Defina entre 3 e 10 slides para estruturar o carrossel.";
+  }
+  return null;
+}
+
+export function buildGuidedCampaignPayload(clientId: number, service: GuidedService, campaign: GuidedCampaignForm, answers: Partial<Record<GuidedFieldKey, string>>) {
+  const mode: "ads" | "carousel" | "bundle" = service.generationMode === "ads" ? "ads" : service.generationMode === "carousel" ? "carousel" : "bundle";
+  return {
+    clientId,
+    name: campaign.name.trim(),
+    objective: campaign.objective.trim(),
+    briefing: buildGuidedBriefing(service, answers),
+    mode,
+    generationMode: service.generationMode,
+    serviceKey: service.key,
+    providerConnectionId: campaign.connectionId ? Number(campaign.connectionId) : undefined,
+  };
 }
 
 export const providerCatalog: Array<{ value: ProviderKind; label: string; defaultModel: string; description: string }> = [
@@ -220,23 +247,14 @@ export default function Agency() {
   async function submitGuidedCampaign(event: FormEvent, action: "draft" | "generating") {
     event.preventDefault();
     if (!clientId) return;
-    const missingField = selectedGuidedService.fields.find(field => field.required && !guidedAnswers[field.key]?.trim());
-    if (missingField) {
-      toast.error(`Preencha “${missingField.label}” para iniciar ${selectedGuidedService.label.toLowerCase()}.`);
+    const validationError = getGuidedCreationValidation(selectedGuidedService, campaign, guidedAnswers);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
     setGuidedAction(action);
     try {
-      const data = await createCampaign.mutateAsync({
-        clientId,
-        name: campaign.name,
-        objective: campaign.objective,
-        briefing: buildGuidedBriefing(selectedGuidedService, guidedAnswers),
-        mode: selectedGuidedService.generationMode === "ads" ? "ads" : selectedGuidedService.generationMode === "carousel" ? "carousel" : "bundle",
-        generationMode: selectedGuidedService.generationMode,
-        serviceKey: selectedGuidedService.key,
-        providerConnectionId: campaign.connectionId ? Number(campaign.connectionId) : undefined,
-      });
+      const data = await createCampaign.mutateAsync(buildGuidedCampaignPayload(clientId, selectedGuidedService, campaign, guidedAnswers));
       if (action === "generating") {
         await generate.mutateAsync({ campaignId: data.id, mode: selectedGuidedService.generationMode });
         setReviewCampaignId(data.id);
@@ -311,11 +329,13 @@ export default function Agency() {
           <div className="ops-panel-heading"><div><p className="ops-section-kicker">03 · Assistente de serviço</p><h2>Escolha a entrega e responda só o que importa</h2></div><WandSparkles size={20} /></div>
           <p className="ops-panel-copy">O cliente selecionado define o contexto. Em seguida, a VERTEX ativa a capacidade da entrega e organiza o briefing antes de criar qualquer material.</p>
           <div className="agency-guided-steps" aria-label="Etapas do fluxo de criação"><span><b>1</b> Cliente <strong>{selectedClient.name}</strong></span><span><b>2</b> Serviço <strong>{selectedGuidedService.label}</strong></span><span><b>3</b> Briefing <strong>Revisável</strong></span></div>
+          <label className="agency-guided-client-picker"><span>Cliente para esta criação</span><select value={clientId ?? ""} onChange={event => setClientId(Number(event.target.value))} aria-label="Cliente do fluxo guiado">{(clients.data ?? []).map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
           <div className="agency-guided-services" aria-label="Tipos de serviço">{guidedServiceCatalog.map(service => <button key={service.key} className={guidedServiceKey === service.key ? "is-selected" : ""} type="button" onClick={() => { setGuidedServiceKey(service.key); setMode(service.generationMode); setGuidedAnswers({}); }}><span>{service.capability}</span><strong>{service.label}</strong><small>{service.description}</small></button>)}</div>
           <form onSubmit={event => void submitGuidedCampaign(event, "generating")} className="agency-campaign-form agency-guided-form">
             <div className="agency-guided-capability"><Sparkles size={16} /><div><span>Capacidade ativada</span><strong>{selectedGuidedService.capability}</strong></div><p>{selectedGuidedService.description}</p></div>
             <div className="agency-form-grid"><Field label="Nome do projeto" value={campaign.name} onChange={value => setCampaign({ ...campaign, name: value })} placeholder={`Ex.: ${selectedGuidedService.label} — ${selectedClient.name}`} required /><Field label="Objetivo da entrega" value={campaign.objective} onChange={value => setCampaign({ ...campaign, objective: value })} placeholder="Ex.: gerar conversas qualificadas" required /><label className="agency-field">Motor de IA<select value={campaign.connectionId} onChange={event => setCampaign({ ...campaign, connectionId: event.target.value })}><option value="">Manus integrado</option>{(overview.data?.connections ?? []).filter(item => item.status === "active").map(item => <option key={item.id} value={item.id}>{item.label} · {item.defaultModel}</option>)}</select></label></div>
-            <div className="agency-guided-question-grid">{selectedGuidedService.fields.map(field => <Field key={field.key} label={`${field.label}${field.required ? " *" : ""}`} value={guidedAnswers[field.key] ?? ""} onChange={value => setGuidedAnswers(current => ({ ...current, [field.key]: value }))} placeholder={field.placeholder} multiline={field.multiline} required={field.required} />)}</div>
+            {selectedGuidedService.key === "carousel" ? <div className="agency-carousel-briefing-note"><Sparkles size={16} /><div><strong>Skill de carrossel ativa</strong><p>O briefing gera uma narrativa por slide e mantém todas as artes em rascunho para revisão humana.</p></div></div> : null}
+            <div className="agency-guided-question-grid">{selectedGuidedService.fields.map(field => <Field key={field.key} label={`${field.label}${field.required ? " *" : ""}`} value={guidedAnswers[field.key] ?? ""} onChange={value => setGuidedAnswers(current => ({ ...current, [field.key]: value }))} placeholder={field.placeholder} multiline={field.multiline} required={field.required} type={field.inputType} min={field.min} max={field.max} />)}</div>
             <div className="agency-guided-actions"><div className="agency-publication-guardrail"><ShieldCheck size={16} /><span>A criação gera material interno sujeito à revisão humana. Nenhuma publicação externa será acionada.</span></div><div><button className="ops-outline-button" type="button" disabled={guidedAction !== "idle" || createCampaign.isPending || generate.isPending} onClick={event => void submitGuidedCampaign(event, "draft")}>{guidedAction === "draft" ? <Loader2 size={16} /> : <FileText size={16} />} Salvar briefing</button><button className="ops-primary-button" type="submit" disabled={guidedAction !== "idle" || createCampaign.isPending || generate.isPending}>{guidedAction === "generating" ? <Loader2 size={16} /> : <WandSparkles size={17} />} Iniciar criação</button></div></div>
           </form>
         </section>
@@ -332,7 +352,7 @@ export default function Agency() {
 }
 
 function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: number | string }) { return <div className="agency-metric"><span>{icon}</span><strong>{value}</strong><small>{label}</small></div>; }
-function Field({ label, value, onChange, placeholder, multiline, type = "text", required, autoComplete }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; multiline?: boolean; type?: string; required?: boolean; autoComplete?: string }) { return <label className="agency-field"><span>{label}</span>{multiline ? <textarea value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} required={required} /> : <input type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} required={required} autoComplete={autoComplete} />}</label>; }
+function Field({ label, value, onChange, placeholder, multiline, type = "text", required, autoComplete, min, max }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; multiline?: boolean; type?: string; required?: boolean; autoComplete?: string; min?: number; max?: number }) { return <label className="agency-field"><span>{label}</span>{multiline ? <textarea value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} required={required} /> : <input type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} required={required} autoComplete={autoComplete} min={min} max={max} />}</label>; }
 export function ProviderConnectionDialog({ open, onOpenChange, onSubmit, onCancel, provider, setProvider, editing, selectedProvider, saving, testing, testState, testIsCurrent, requiresTest, requiresNewKey, onTest }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (event: FormEvent) => void; onCancel: () => void; provider: ProviderForm; setProvider: (provider: ProviderForm) => void; editing: boolean; selectedProvider: { description: string }; saving: boolean; testing: boolean; testState: "idle" | "passed" | "failed"; testIsCurrent: boolean; requiresTest: boolean; requiresNewKey: boolean; onTest: () => void }) {
   const update = (partial: Partial<ProviderForm>) => setProvider({ ...provider, ...partial });
   const description = requiresNewKey

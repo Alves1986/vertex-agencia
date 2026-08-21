@@ -15,7 +15,7 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-import { agencyModeOptions, buildGuidedBriefing, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, guidedServiceCatalog, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
+import { agencyModeOptions, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, guidedServiceCatalog, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
 
 describe("modos da Agência IA", () => {
   it("mantém fluxos integrados e separados para o mesmo briefing", () => {
@@ -35,11 +35,24 @@ describe("modos da Agência IA", () => {
   it("estrutura o briefing guiado e mantém a entrega sujeita à revisão humana", () => {
     const carousel = guidedServiceCatalog.find(item => item.key === "carousel");
     expect(carousel).toBeDefined();
-    const briefing = buildGuidedBriefing(carousel!, { keyMessage: "Como escolher um acabamento durável", audience: "Arquitetos", slideCount: "7" });
+    const briefing = buildGuidedBriefing(carousel!, { keyMessage: "Como escolher um acabamento durável", audience: "Arquitetos", slideCount: "7", format: "Instagram vertical", visualDirection: "Texturas reais", callToAction: "Salve este post" });
     expect(briefing).toContain("Serviço selecionado: Carrossel");
     expect(briefing).toContain("Capacidade ativada: Narrativa para carrossel");
-    expect(briefing).toContain("Quantidade desejada de slides: 7");
+    expect(briefing).toContain("Quantidade de slides: 7");
     expect(briefing).toContain("revisão humana");
+  });
+
+  it("exige a estrutura necessária do carrossel e limita a quantidade de slides", () => {
+    const carousel = guidedServiceCatalog.find(item => item.key === "carousel")!;
+    expect(carousel.fields.filter(field => field.required).map(field => field.key)).toEqual(["keyMessage", "audience", "slideCount", "format", "visualDirection", "callToAction"]);
+    expect(getGuidedCreationValidation(carousel, { name: "Carrossel de revestimentos", objective: "Gerar salvamentos", connectionId: "" }, { keyMessage: "Escolha com segurança", audience: "Arquitetos", slideCount: "2", format: "Vertical", visualDirection: "Minimalista", callToAction: "Salve" })).toContain("entre 3 e 10 slides");
+  });
+
+  it("monta o payload que inicia a capacidade de carrossel para o cliente selecionado", () => {
+    const carousel = guidedServiceCatalog.find(item => item.key === "carousel")!;
+    const payload = buildGuidedCampaignPayload(14, carousel, { name: "Carrossel de acabamento", objective: "Aumentar consideração", connectionId: "7" }, { keyMessage: "Acabamento certo", audience: "Arquitetos", slideCount: "6", format: "Vertical 1080 × 1350", visualDirection: "Tons minerais", callToAction: "Fale com a equipe" });
+    expect(payload).toMatchObject({ clientId: 14, mode: "carousel", generationMode: "carousel", serviceKey: "carousel", providerConnectionId: 7 });
+    expect(payload.briefing).toContain("Narrativa para carrossel");
   });
 
   it("expõe provedores configuráveis e mantém a publicação externa sob decisão humana", () => {
