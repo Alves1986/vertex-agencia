@@ -4,8 +4,10 @@ import {
   adCampaigns,
   aiGenerations,
   calendarEvents,
+  carouselSlideApprovalBatches,
   carouselSlides,
   carouselBriefTemplates,
+  clientBrandAssetCollections,
   clientBrandAssets,
   creativeApprovals,
   creativeVersions,
@@ -1609,9 +1611,13 @@ export async function listClientBrandAssets(userId: number, clientId: number) {
 }
 
 export async function createClientBrandAsset(userId: number, input: {
-  clientId: number; name: string; assetType: "logo" | "product" | "reference" | "palette" | "other"; storageKey: string; assetUrl: string; mimeType: string; byteSize: number;
+  clientId: number; collectionId?: number | null; name: string; assetType: "logo" | "product" | "reference" | "palette" | "other"; storageKey: string; assetUrl: string; mimeType: string; byteSize: number;
 }) {
   const db = await requireOwnedAgencyClient(userId, input.clientId);
+  if (input.collectionId) {
+    const collection = await db.select({ id: clientBrandAssetCollections.id }).from(clientBrandAssetCollections).where(and(eq(clientBrandAssetCollections.id, input.collectionId), eq(clientBrandAssetCollections.clientId, input.clientId), eq(clientBrandAssetCollections.ownerUserId, userId))).limit(1);
+    if (!collection[0]) throw new Error("Coleção de marca não encontrada para este cliente");
+  }
   const [created] = await db.insert(clientBrandAssets).values({ ...input, ownerUserId: userId, status: "authorized" }).$returningId();
   return created.id;
 }
@@ -1626,6 +1632,64 @@ export async function setClientBrandAssetStatus(userId: number, input: { clientI
   if (!asset[0]) throw new Error("Ativo de marca não encontrado para este cliente");
   await db.update(clientBrandAssets).set({ status: input.status }).where(eq(clientBrandAssets.id, input.assetId));
   return input.assetId;
+}
+
+export async function listClientBrandAssetCollections(userId: number, clientId: number) {
+  const db = await requireOwnedAgencyClient(userId, clientId);
+  return db.select().from(clientBrandAssetCollections).where(and(eq(clientBrandAssetCollections.clientId, clientId), eq(clientBrandAssetCollections.ownerUserId, userId))).orderBy(asc(clientBrandAssetCollections.name));
+}
+
+export async function createClientBrandAssetCollection(userId: number, input: { clientId: number; name: string; description?: string | null }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const [created] = await db.insert(clientBrandAssetCollections).values({ ...input, ownerUserId: userId }).$returningId();
+  return created.id;
+}
+
+export async function updateClientBrandAssetCollection(userId: number, input: { clientId: number; collectionId: number; name: string; description?: string | null }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const collection = await db.select({ id: clientBrandAssetCollections.id }).from(clientBrandAssetCollections).where(and(eq(clientBrandAssetCollections.id, input.collectionId), eq(clientBrandAssetCollections.clientId, input.clientId), eq(clientBrandAssetCollections.ownerUserId, userId))).limit(1);
+  if (!collection[0]) throw new Error("Coleção de marca não encontrada para este cliente");
+  await db.update(clientBrandAssetCollections).set({ name: input.name, description: input.description ?? null }).where(eq(clientBrandAssetCollections.id, input.collectionId));
+  return input.collectionId;
+}
+
+export async function deleteClientBrandAssetCollection(userId: number, input: { clientId: number; collectionId: number }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const collection = await db.select({ id: clientBrandAssetCollections.id }).from(clientBrandAssetCollections).where(and(eq(clientBrandAssetCollections.id, input.collectionId), eq(clientBrandAssetCollections.clientId, input.clientId), eq(clientBrandAssetCollections.ownerUserId, userId))).limit(1);
+  if (!collection[0]) throw new Error("Coleção de marca não encontrada para este cliente");
+  await db.update(clientBrandAssets).set({ collectionId: null }).where(and(eq(clientBrandAssets.clientId, input.clientId), eq(clientBrandAssets.collectionId, input.collectionId), eq(clientBrandAssets.ownerUserId, userId)));
+  await db.delete(clientBrandAssetCollections).where(eq(clientBrandAssetCollections.id, input.collectionId));
+  return input.collectionId;
+}
+
+export async function setClientBrandAssetCollection(userId: number, input: { clientId: number; assetId: number; collectionId?: number | null }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const asset = await db.select({ id: clientBrandAssets.id }).from(clientBrandAssets).where(and(eq(clientBrandAssets.id, input.assetId), eq(clientBrandAssets.clientId, input.clientId), eq(clientBrandAssets.ownerUserId, userId))).limit(1);
+  if (!asset[0]) throw new Error("Ativo de marca não encontrado para este cliente");
+  if (input.collectionId) {
+    const collection = await db.select({ id: clientBrandAssetCollections.id }).from(clientBrandAssetCollections).where(and(eq(clientBrandAssetCollections.id, input.collectionId), eq(clientBrandAssetCollections.clientId, input.clientId), eq(clientBrandAssetCollections.ownerUserId, userId))).limit(1);
+    if (!collection[0]) throw new Error("Coleção de marca não encontrada para este cliente");
+  }
+  await db.update(clientBrandAssets).set({ collectionId: input.collectionId ?? null }).where(eq(clientBrandAssets.id, input.assetId));
+  return input.assetId;
+}
+
+export async function approveCarouselSlidesBatch(userId: number, input: { clientId: number; creativeVersionId: number; slideNumbers: number[]; note?: string | null }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const version = await db.select({ id: creativeVersions.id, campaignId: creativeVersions.campaignId, kind: creativeVersions.kind }).from(creativeVersions).innerJoin(adCampaigns, eq(creativeVersions.campaignId, adCampaigns.id)).where(and(eq(creativeVersions.id, input.creativeVersionId), eq(creativeVersions.ownerUserId, userId), eq(adCampaigns.clientId, input.clientId), eq(adCampaigns.ownerUserId, userId))).limit(1);
+  if (!version[0] || version[0].kind !== "carousel") throw new Error("Prévia de carrossel não encontrada para este cliente");
+  const slides = await db.select({ id: carouselSlides.id, slideNumber: carouselSlides.slideNumber, approvalStatus: carouselSlides.approvalStatus }).from(carouselSlides).where(eq(carouselSlides.campaignId, version[0].campaignId));
+  const uniqueNumbers = Array.from(new Set(input.slideNumbers)).sort((left, right) => left - right);
+  const selectedSlides = slides.filter(slide => uniqueNumbers.includes(slide.slideNumber));
+  if (!selectedSlides.length || selectedSlides.length !== uniqueNumbers.length) throw new Error("Selecione apenas slides pertencentes a esta prévia");
+  await Promise.all(selectedSlides.map(slide => db.update(carouselSlides).set({ approvalStatus: "approved" }).where(eq(carouselSlides.id, slide.id))));
+  const [created] = await db.insert(carouselSlideApprovalBatches).values({ creativeVersionId: version[0].id, campaignId: version[0].campaignId, ownerUserId: userId, reviewerUserId: userId, slideNumbersJson: JSON.stringify(uniqueNumbers), note: input.note ?? null }).$returningId();
+  const allApproved = slides.every(slide => uniqueNumbers.includes(slide.slideNumber) || slide.approvalStatus === "approved");
+  if (allApproved) {
+    await db.update(creativeVersions).set({ status: "approved" }).where(and(eq(creativeVersions.id, version[0].id), eq(creativeVersions.ownerUserId, userId)));
+    await db.insert(creativeApprovals).values({ creativeVersionId: version[0].id, campaignId: version[0].campaignId, ownerUserId: userId, reviewerUserId: userId, decision: "approved", note: input.note ? `Aprovação em lote: ${input.note}` : `Aprovação em lote de ${uniqueNumbers.length} slides.` });
+  }
+  return { batchId: created.id, approvedSlides: uniqueNumbers, fullyApproved: allApproved };
 }
 
 export async function createTrendSignal(userId: number, input: {

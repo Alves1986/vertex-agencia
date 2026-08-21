@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
 
 const mocks = vi.hoisted(() => ({
-  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listClientApiUsage: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), updateClientMonthlyApiCallLimit: vi.fn(), upsertClientAgencyProfile: vi.fn(), listCarouselBriefTemplates: vi.fn(), createCarouselBriefTemplate: vi.fn(), deleteCarouselBriefTemplate: vi.fn(), listClientBrandAssets: vi.fn(), createClientBrandAsset: vi.fn(), setClientBrandAssetStatus: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(), storagePut: vi.fn(),
+  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listClientApiUsage: vi.fn(), listCreativeApprovals: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), updateClientMonthlyApiCallLimit: vi.fn(), upsertClientAgencyProfile: vi.fn(), listCarouselBriefTemplates: vi.fn(), createCarouselBriefTemplate: vi.fn(), deleteCarouselBriefTemplate: vi.fn(), listClientBrandAssets: vi.fn(), createClientBrandAsset: vi.fn(), setClientBrandAssetStatus: vi.fn(), listClientBrandAssetCollections: vi.fn(), createClientBrandAssetCollection: vi.fn(), updateClientBrandAssetCollection: vi.fn(), deleteClientBrandAssetCollection: vi.fn(), setClientBrandAssetCollection: vi.fn(), listCarouselSlides: vi.fn(), approveCarouselSlidesBatch: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(), storagePut: vi.fn(),
 }));
 
 vi.mock("../db", () => mocks);
@@ -125,6 +125,27 @@ describe("agency generation review contracts", () => {
     expect(mocks.storagePut).toHaveBeenCalledWith(expect.stringContaining("brand-assets/client-3/"), expect.any(Buffer), "image/png");
     expect(mocks.createClientBrandAsset).toHaveBeenCalledWith(7, expect.objectContaining({ clientId: 3, name: "Logo aprovado", assetType: "logo" }));
     expect(mocks.listClientBrandAssets).toHaveBeenCalledWith(7, 3);
+  });
+
+  it("mantém coleções, ativos e aprovação em lote restritos ao cliente e à versão selecionados", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.createClientBrandAssetCollection.mockResolvedValue(81);
+    mocks.listClientBrandAssetCollections.mockResolvedValue([{ id: 81, clientId: 3, name: "Identidade 2026", description: "Logo e aplicações" }]);
+    mocks.setClientBrandAssetCollection.mockResolvedValue(65);
+    mocks.listCarouselSlides.mockResolvedValue([{ id: 301, slideNumber: 1, headline: "Capa" }, { id: 302, slideNumber: 2, headline: "Contexto" }]);
+    mocks.approveCarouselSlidesBatch.mockResolvedValue({ approvalId: 501, approvedSlides: 2, status: "approved" });
+    const caller = agencyRouter.createCaller(createContext());
+
+    await expect(caller.createBrandAssetCollection({ clientId: 3, name: "Identidade 2026", description: "Logo e aplicações" })).resolves.toEqual({ id: 81 });
+    await expect(caller.brandAssetCollections({ clientId: 3 })).resolves.toEqual([{ id: 81, clientId: 3, name: "Identidade 2026", description: "Logo e aplicações" }]);
+    await expect(caller.setBrandAssetCollection({ clientId: 3, assetId: 65, collectionId: 81 })).resolves.toEqual({ id: 65 });
+    await expect(caller.carouselSlides({ campaignId: 44 })).resolves.toHaveLength(2);
+    await expect(caller.approveCarouselSlidesBatch({ clientId: 3, creativeVersionId: 121, slideNumbers: [1, 2], note: "Aprovação do responsável" })).resolves.toEqual({ approvalId: 501, approvedSlides: 2, status: "approved" });
+
+    expect(mocks.createClientBrandAssetCollection).toHaveBeenCalledWith(7, expect.objectContaining({ clientId: 3, name: "Identidade 2026" }));
+    expect(mocks.setClientBrandAssetCollection).toHaveBeenCalledWith(7, { clientId: 3, assetId: 65, collectionId: 81 });
+    expect(mocks.listCarouselSlides).toHaveBeenCalledWith(7, 44);
+    expect(mocks.approveCarouselSlidesBatch).toHaveBeenCalledWith(7, expect.objectContaining({ clientId: 3, creativeVersionId: 121, slideNumbers: [1, 2] }));
   });
 
   it("registra decisões humanas e lista o histórico somente pelo contrato protegido", async () => {

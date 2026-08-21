@@ -15,7 +15,7 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-import { agencyModeOptions, buildCarouselPreview, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, guidedServiceCatalog, parseCarouselTemplateFields, ProviderConnectionDialog, providerCatalog, publicationGuardrail } from "./Agency";
+import { agencyModeOptions, buildCarouselPreview, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, guidedServiceCatalog, parseCarouselTemplateFields, ProviderConnectionDialog, providerCatalog, publicationGuardrail, reorderCarouselPreview } from "./Agency";
 
 describe("modos da Agência IA", () => {
   it("mantém fluxos integrados e separados para o mesmo briefing", () => {
@@ -61,6 +61,14 @@ describe("modos da Agência IA", () => {
     expect(preview[0]).toMatchObject({ slideNumber: 1, role: "cover", headline: "Escolha o revestimento certo" });
     expect(preview.at(-1)).toMatchObject({ slideNumber: 5, role: "cta", headline: "Solicite o catálogo" });
     expect(preview.every(slide => slide.visualDirection === "Texturas naturais")).toBe(true);
+  });
+
+  it("reordena a prévia de carrossel e renumera os slides sem alterar o conteúdo", () => {
+    const preview = buildCarouselPreview({ keyMessage: "Escolha o revestimento certo", audience: "Arquitetos", slideCount: "5", visualDirection: "Texturas naturais", callToAction: "Solicite o catálogo" });
+    const reordered = reorderCarouselPreview(preview, 5, 2);
+    expect(reordered.map(slide => slide.slideNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(reordered[1]).toMatchObject({ role: "cta", headline: "Solicite o catálogo" });
+    expect(reordered[0]).toMatchObject({ role: "cover", headline: "Escolha o revestimento certo" });
   });
 
   it("carrega somente campos reconhecidos de modelos do cliente e inclui ativos autorizados no briefing", () => {

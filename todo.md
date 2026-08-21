@@ -185,3 +185,10 @@
 - [x] Permitir envio seguro de ativos de marca à biblioteca e seleção dos itens autorizados no briefing de carrossel.
 - [x] Cobrir persistência, isolamento, edição de prévia, modelos e biblioteca com testes de contrato e interface.
 - [x] Documentar a operação da prévia, dos modelos e dos ativos de marca autorizados.
+- [x] Modelar coleções de ativos visuais por cliente e workspace, com título, descrição e vínculo seguro dos ativos de marca.
+- [x] Adicionar contratos protegidos para criar, listar, atualizar e remover coleções sem permitir acesso entre clientes.
+- [x] Implementar arrastar e soltar acessível para reordenar slides na prévia, persistindo a nova ordem antes da geração final.
+- [x] Permitir criar e organizar coleções de marca, atribuir ativos a elas e filtrar a seleção de referências por coleção.
+- [x] Criar aprovação em lote de slides da prévia, com seleção explícita, responsável, estado auditável e preservação da revisão humana.
+- [x] Cobrir contratos, persistência, reordenação, coleções e aprovação em lote com testes de servidor e interface.
+- [x] Documentar a operação de reordenação, coleções de marca e aprovação em lote.

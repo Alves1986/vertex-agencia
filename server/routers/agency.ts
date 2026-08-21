@@ -5,6 +5,7 @@ import {
   createAdCampaign,
   createAiGeneration,
   createCarouselBriefTemplate,
+  createClientBrandAssetCollection,
   createClientBrandAsset,
   createCreativeApproval,
   createCreativeVersion,
@@ -20,6 +21,8 @@ import {
   listAdCampaigns,
   listAgencyBriefs,
   listCarouselBriefTemplates,
+  listCarouselSlides,
+  listClientBrandAssetCollections,
   listClientBrandAssets,
   listClientAiConnections,
   listClientCredentialStatuses,
@@ -32,10 +35,14 @@ import {
   listVideoScripts,
   replaceCarouselSlides,
   deleteCarouselBriefTemplate,
+  deleteClientBrandAssetCollection,
+  approveCarouselSlidesBatch,
   setClientAiConnectionStatus,
+  setClientBrandAssetCollection,
   setClientBrandAssetStatus,
   updateAdCampaignStatus,
   updateAdCampaignProvider,
+  updateClientBrandAssetCollection,
   updateClientAiConnection,
   updateClientMonthlyApiCallLimit,
   upsertClientAgencyProfile,
@@ -157,6 +164,31 @@ export const agencyRouter = router({
     return { id: await setClientBrandAssetStatus(userId, input) };
   }),
 
+  brandAssetCollections: protectedProcedure.input(z.object({ clientId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return listClientBrandAssetCollections(userId, input.clientId);
+  }),
+
+  createBrandAssetCollection: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), name: z.string().trim().min(2).max(160), description: z.string().trim().max(700).optional() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await createClientBrandAssetCollection(userId, { ...input, description: input.description || null }) };
+  }),
+
+  updateBrandAssetCollection: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), collectionId: z.number().int().positive(), name: z.string().trim().min(2).max(160), description: z.string().trim().max(700).optional() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await updateClientBrandAssetCollection(userId, { ...input, description: input.description || null }) };
+  }),
+
+  deleteBrandAssetCollection: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), collectionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await deleteClientBrandAssetCollection(userId, input) };
+  }),
+
+  setBrandAssetCollection: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), assetId: z.number().int().positive(), collectionId: z.number().int().positive().nullable() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await setClientBrandAssetCollection(userId, input) };
+  }),
+
   connectProvider: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), label: z.string().trim().min(2).max(120), provider: providerSchema, apiBaseUrl: z.string().url().max(1200).optional().nullable(), defaultModel: z.string().trim().min(1).max(180), defaultImageModel: z.string().max(180).optional().nullable(), apiKey: z.string().min(8).max(1200).optional(), verificationToken: z.string().min(20).max(4000).optional() })).mutation(async ({ ctx, input }) => {
     if (input.provider !== "manus" && !input.apiKey) throw new Error("Informe a chave de API do provedor selecionado");
     const userId = await getOperationalUserId(ctx.user);
@@ -230,6 +262,16 @@ export const agencyRouter = router({
   approvals: protectedProcedure.input(z.object({ creativeVersionId: z.number().int().positive() })).query(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     return listCreativeApprovals(userId, input.creativeVersionId);
+  }),
+
+  carouselSlides: protectedProcedure.input(z.object({ campaignId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return listCarouselSlides(userId, input.campaignId);
+  }),
+
+  approveCarouselSlidesBatch: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), creativeVersionId: z.number().int().positive(), slideNumbers: z.array(z.number().int().min(1).max(10)).min(1).max(10), note: z.string().trim().max(4000).optional() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return approveCarouselSlidesBatch(userId, { ...input, note: input.note || null });
   }),
 
   approveVersion: protectedProcedure.input(z.object({ creativeVersionId: z.number().int().positive(), decision: z.enum(["approved", "changes_requested", "rejected"]), note: z.string().max(4000).optional() })).mutation(async ({ ctx, input }) => {

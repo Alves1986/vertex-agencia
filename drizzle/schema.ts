@@ -364,6 +364,26 @@ export const creativeApprovals = mysqlTable(
   ],
 );
 
+export const carouselSlideApprovalBatches = mysqlTable(
+  "carousel_slide_approval_batches",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    creativeVersionId: int("creativeVersionId").notNull().references(() => creativeVersions.id, { onDelete: "cascade" }),
+    campaignId: int("campaignId").notNull().references(() => adCampaigns.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    reviewerUserId: int("reviewerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    slideNumbersJson: text("slideNumbersJson").notNull(),
+    decision: mysqlEnum("decision", ["approved", "changes_requested"]).default("approved").notNull(),
+    note: text("note"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("carousel_batch_approvals_version_idx").on(table.creativeVersionId),
+    index("carousel_batch_approvals_campaign_idx").on(table.campaignId),
+    index("carousel_batch_approvals_owner_idx").on(table.ownerUserId),
+  ],
+);
+
 export const clientAgencyProfiles = mysqlTable(
   "client_agency_profiles",
   {
@@ -422,12 +442,30 @@ export const carouselBriefTemplates = mysqlTable(
   ],
 );
 
+export const clientBrandAssetCollections = mysqlTable(
+  "client_brand_asset_collections",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: varchar("description", { length: 500 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("client_brand_asset_collections_client_name_unique").on(table.clientId, table.name),
+    index("client_brand_asset_collections_owner_client_idx").on(table.ownerUserId, table.clientId),
+  ],
+);
+
 export const clientBrandAssets = mysqlTable(
   "client_brand_assets",
   {
     id: int("id").autoincrement().primaryKey(),
     clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
     ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    collectionId: int("collectionId").references(() => clientBrandAssetCollections.id, { onDelete: "set null" }),
     name: varchar("name", { length: 220 }).notNull(),
     assetType: mysqlEnum("assetType", ["logo", "product", "reference", "palette", "other"]).default("reference").notNull(),
     storageKey: varchar("storageKey", { length: 1000 }).notNull(),
@@ -441,6 +479,7 @@ export const clientBrandAssets = mysqlTable(
   table => [
     index("client_brand_assets_owner_client_idx").on(table.ownerUserId, table.clientId),
     index("client_brand_assets_client_status_idx").on(table.clientId, table.status),
+    index("client_brand_assets_client_collection_idx").on(table.clientId, table.collectionId),
   ],
 );
 
@@ -813,6 +852,7 @@ export type ClientAiConnection = typeof clientAiConnections.$inferSelect;
 export type AdCampaign = typeof adCampaigns.$inferSelect;
 export type AiGeneration = typeof aiGenerations.$inferSelect;
 export type CarouselSlide = typeof carouselSlides.$inferSelect;
+export type CarouselSlideApprovalBatch = typeof carouselSlideApprovalBatches.$inferSelect;
 export type CreativeVersion = typeof creativeVersions.$inferSelect;
 export type CreativeApproval = typeof creativeApprovals.$inferSelect;
 export type ClientAgencyProfile = typeof clientAgencyProfiles.$inferSelect;
