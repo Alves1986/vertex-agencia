@@ -149,6 +149,8 @@ export type ClientDeletionPreview = {
   dependencies: {
     projects: number;
     campaigns: number;
+    proposals: number;
+    convertedLeads: number;
     channels: number;
     tickets: number;
     portalMembers: number;
@@ -160,9 +162,11 @@ export async function getClientDeletionPreview(userId: number, clientId: number)
   const ownedClient = await db.select({ id: clients.id, name: clients.name }).from(clients).where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId))).limit(1);
   if (!ownedClient[0]) throw new Error("Cliente não encontrado neste espaço de trabalho");
 
-  const [projectCount, campaignCount, channelCount, ticketCount, portalMemberCount] = await Promise.all([
+  const [projectCount, campaignCount, proposalCount, convertedLeadCount, channelCount, ticketCount, portalMemberCount] = await Promise.all([
     db.select({ value: count() }).from(projects).where(and(eq(projects.clientId, clientId), eq(projects.ownerUserId, userId))),
     db.select({ value: count() }).from(adCampaigns).where(and(eq(adCampaigns.clientId, clientId), eq(adCampaigns.ownerUserId, userId))),
+    db.select({ value: count() }).from(commercialProposals).where(and(eq(commercialProposals.clientId, clientId), eq(commercialProposals.ownerUserId, userId))),
+    db.select({ value: count() }).from(salesLeads).where(and(eq(salesLeads.convertedClientId, clientId), eq(salesLeads.ownerUserId, userId))),
     db.select({ value: count() }).from(whatsappChannels).where(and(eq(whatsappChannels.clientId, clientId), eq(whatsappChannels.ownerUserId, userId))),
     db.select({ value: count() }).from(supportTickets).where(and(eq(supportTickets.clientId, clientId), eq(supportTickets.ownerUserId, userId))),
     db.select({ value: count() }).from(clientPortalMembers).where(eq(clientPortalMembers.clientId, clientId)),
@@ -173,6 +177,8 @@ export async function getClientDeletionPreview(userId: number, clientId: number)
     dependencies: {
       projects: Number(projectCount[0]?.value ?? 0),
       campaigns: Number(campaignCount[0]?.value ?? 0),
+      proposals: Number(proposalCount[0]?.value ?? 0),
+      convertedLeads: Number(convertedLeadCount[0]?.value ?? 0),
       channels: Number(channelCount[0]?.value ?? 0),
       tickets: Number(ticketCount[0]?.value ?? 0),
       portalMembers: Number(portalMemberCount[0]?.value ?? 0),
@@ -187,6 +193,8 @@ export async function deleteClient(userId: number, clientId: number, confirmatio
   const db = await requireDb();
   await db.transaction(async tx => {
     await tx.delete(calendarEvents).where(and(eq(calendarEvents.clientId, clientId), eq(calendarEvents.ownerUserId, userId)));
+    await tx.delete(commercialProposals).where(and(eq(commercialProposals.clientId, clientId), eq(commercialProposals.ownerUserId, userId)));
+    await tx.delete(salesLeads).where(and(eq(salesLeads.convertedClientId, clientId), eq(salesLeads.ownerUserId, userId)));
     await tx.delete(projects).where(and(eq(projects.clientId, clientId), eq(projects.ownerUserId, userId)));
     await tx.delete(clients).where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId)));
   });

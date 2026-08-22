@@ -14,7 +14,7 @@ describe("exclusão de cliente", () => {
   it("mostra o impacto e mantém a ação desabilitada enquanto a confirmação não confere", () => {
     const markup = renderToStaticMarkup(createElement(ClientDeletionDialog, {
       clientName: "Globo Acabamentos",
-      dependencies: { projects: 2, campaigns: 1, channels: 1, tickets: 0, portalMembers: 3 },
+      dependencies: { projects: 2, campaigns: 1, proposals: 2, convertedLeads: 1, channels: 1, tickets: 0, portalMembers: 3 },
       confirmation: "Globo",
       loading: false,
       pending: false,
@@ -26,6 +26,8 @@ describe("exclusão de cliente", () => {
     expect(markup).toContain("Dados que serão removidos");
     expect(markup).toContain("2</b> projeto(s) e suas tarefas");
     expect(markup).toContain("3</b> acesso(s) ao portal");
+    expect(markup).toContain("2</b> proposta(s) comercial(is)");
+    expect(markup).toContain("Ativos de marca, briefings, mídia, pesquisas, relatórios");
     expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>.*Excluir definitivamente/);
   });
 });

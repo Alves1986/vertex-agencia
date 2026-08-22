@@ -148,6 +148,20 @@
       "when": 1787421416130,
       "tag": "0020_special_black_panther",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1787430893859,
+      "tag": "0021_fine_banshee",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1787430985852,
+      "tag": "0022_kind_barracuda",
+      "breakpoints": true
     }
   ]
 }

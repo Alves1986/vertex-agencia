@@ -260,3 +260,6 @@
 - [x] Mapear dependências de cliente e definir bloqueios seguros para exclusão.
 - [x] Implementar exclusão de cliente com confirmação explícita e atualização dos filtros ativos.
 - [x] Cobrir a exclusão de cliente com testes de integridade, interface e regressão.
+- [x] Auditar todas as relações e ativos vinculados ao cliente para exclusão integral.
+- [x] Garantir remoção de registros e referências relacionadas na exclusão confirmada do cliente.
+- [x] Cobrir a exclusão integral com testes de ausência de vínculos remanescentes.
