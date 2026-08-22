@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -142,6 +142,56 @@ export async function createClient(userId: number, input: {
 }) {
   const db = await requireDb();
   await db.insert(clients).values({ ...input, createdByUserId: userId });
+}
+
+export type ClientDeletionPreview = {
+  client: { id: number; name: string };
+  dependencies: {
+    projects: number;
+    campaigns: number;
+    channels: number;
+    tickets: number;
+    portalMembers: number;
+  };
+};
+
+export async function getClientDeletionPreview(userId: number, clientId: number): Promise<ClientDeletionPreview> {
+  const db = await requireDb();
+  const ownedClient = await db.select({ id: clients.id, name: clients.name }).from(clients).where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId))).limit(1);
+  if (!ownedClient[0]) throw new Error("Cliente não encontrado neste espaço de trabalho");
+
+  const [projectCount, campaignCount, channelCount, ticketCount, portalMemberCount] = await Promise.all([
+    db.select({ value: count() }).from(projects).where(and(eq(projects.clientId, clientId), eq(projects.ownerUserId, userId))),
+    db.select({ value: count() }).from(adCampaigns).where(and(eq(adCampaigns.clientId, clientId), eq(adCampaigns.ownerUserId, userId))),
+    db.select({ value: count() }).from(whatsappChannels).where(and(eq(whatsappChannels.clientId, clientId), eq(whatsappChannels.ownerUserId, userId))),
+    db.select({ value: count() }).from(supportTickets).where(and(eq(supportTickets.clientId, clientId), eq(supportTickets.ownerUserId, userId))),
+    db.select({ value: count() }).from(clientPortalMembers).where(eq(clientPortalMembers.clientId, clientId)),
+  ]);
+
+  return {
+    client: ownedClient[0],
+    dependencies: {
+      projects: Number(projectCount[0]?.value ?? 0),
+      campaigns: Number(campaignCount[0]?.value ?? 0),
+      channels: Number(channelCount[0]?.value ?? 0),
+      tickets: Number(ticketCount[0]?.value ?? 0),
+      portalMembers: Number(portalMemberCount[0]?.value ?? 0),
+    },
+  };
+}
+
+export async function deleteClient(userId: number, clientId: number, confirmationName: string): Promise<ClientDeletionPreview> {
+  const preview = await getClientDeletionPreview(userId, clientId);
+  if (preview.client.name !== confirmationName.trim()) throw new Error("Digite exatamente o nome do cliente para confirmar a exclusão");
+
+  const db = await requireDb();
+  await db.transaction(async tx => {
+    await tx.delete(calendarEvents).where(and(eq(calendarEvents.clientId, clientId), eq(calendarEvents.ownerUserId, userId)));
+    await tx.delete(projects).where(and(eq(projects.clientId, clientId), eq(projects.ownerUserId, userId)));
+    await tx.delete(clients).where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId)));
+  });
+
+  return preview;
 }
 
 export async function listTeams(userId: number) {

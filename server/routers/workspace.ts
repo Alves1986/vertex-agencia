@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createClient, createOperator, createTeam, getDashboardPreferences, listClients, listOperators, listTeams, updateDashboardPreferences, updateTeam } from "../db";
+import { createClient, createOperator, createTeam, deleteClient, getClientDeletionPreview, getDashboardPreferences, listClients, listOperators, listTeams, updateDashboardPreferences, updateTeam } from "../db";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getOperationalUserId } from "./helpers";
 
@@ -14,6 +14,12 @@ export const workspaceRouter = router({
       await createClient(await getOperationalUserId(ctx.user), input);
       return { success: true } as const;
     }),
+  clientDeletionPreview: protectedProcedure
+    .input(z.object({ clientId: z.number().int().positive() }))
+    .query(async ({ ctx, input }) => getClientDeletionPreview(await getOperationalUserId(ctx.user), input.clientId)),
+  deleteClient: protectedProcedure
+    .input(z.object({ clientId: z.number().int().positive(), confirmationName: z.string().trim().min(2).max(180) }))
+    .mutation(async ({ ctx, input }) => deleteClient(await getOperationalUserId(ctx.user), input.clientId, input.confirmationName)),
   createTeam: protectedProcedure
     .input(z.object({ name: z.string().trim().min(2).max(140), color: z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/).optional() }))
     .mutation(async ({ ctx, input }) => {

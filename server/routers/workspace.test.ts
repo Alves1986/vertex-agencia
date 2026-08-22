@@ -28,6 +28,16 @@ describe("workspace.createClient", () => {
   });
 });
 
+describe("workspace.deleteClient", () => {
+  it("rejeita identificadores e confirmações inválidas antes de acessar dados", async () => {
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.workspace.clientDeletionPreview({ clientId: 0 })).rejects.toThrow();
+    await expect(caller.workspace.deleteClient({ clientId: 0, confirmationName: "Cliente" })).rejects.toThrow();
+    await expect(caller.workspace.deleteClient({ clientId: 1, confirmationName: "A" })).rejects.toThrow();
+  });
+});
+
 describe("responsible assignment contracts", () => {
   it("rejects invalid project and task identifiers before a write", async () => {
     const caller = appRouter.createCaller(createContext());

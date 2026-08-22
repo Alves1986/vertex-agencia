@@ -257,3 +257,6 @@
 - [x] Refatorar a navegação superior e o dashboard inicial para uma jornada de agência compreensível.
 - [x] Reorganizar páginas e termos dos módulos com contexto, etapas e próximos passos claros.
 - [x] Cobrir a nova arquitetura SaaS com testes, validação responsiva e documentação de operação.
+- [x] Mapear dependências de cliente e definir bloqueios seguros para exclusão.
+- [x] Implementar exclusão de cliente com confirmação explícita e atualização dos filtros ativos.
+- [x] Cobrir a exclusão de cliente com testes de integridade, interface e regressão.

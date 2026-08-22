@@ -1,7 +1,7 @@
 import { StudioShell, formatDate } from "@/components/StudioShell";
 import { trpc } from "@/lib/trpc";
-import { BadgeDollarSign, BriefcaseBusiness, CircleDollarSign, FileText, Handshake, Loader2, Plus, TrendingUp, UsersRound } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, BadgeDollarSign, BriefcaseBusiness, CircleDollarSign, FileText, Handshake, Loader2, Plus, Trash2, TrendingUp, UsersRound } from "lucide-react";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import "./commercial.css";
 
@@ -12,6 +12,10 @@ const entryTypeLabel: Record<string, string> = { revenue: "Receita", expense: "D
 
 export function formatBRL(cents?: number | null) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((cents ?? 0) / 100);
+}
+
+export function canConfirmClientDeletion(typedName: string, clientName: string) {
+  return typedName.trim() === clientName.trim();
 }
 
 function amountToCents(value: string) {
@@ -28,12 +32,15 @@ export default function Commercial() {
   const [proposalForm, setProposalForm] = useState({ proposalNumber: "", title: "", scope: "", amount: "", leadId: "" });
   const [contractForm, setContractForm] = useState({ code: "", title: "", scope: "", billingCycle: "monthly" as "monthly" | "annual" | "project", recurring: "", proposalId: "" });
   const [entryForm, setEntryForm] = useState({ entryType: "revenue" as "revenue" | "expense" | "media_spend" | "refund", description: "", amount: "", status: "planned" as "planned" | "invoiced" | "paid" | "overdue" | "cancelled" });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletionConfirmation, setDeletionConfirmation] = useState("");
 
   const leads = trpc.commercial.leads.useQuery();
   const proposals = trpc.commercial.proposals.useQuery(clientId ? { clientId } : undefined);
   const contracts = trpc.commercial.contracts.useQuery(clientId ? { clientId } : undefined);
   const entries = trpc.commercial.financialEntries.useQuery(clientId ? { clientId } : undefined);
   const profitability = trpc.commercial.profitability.useQuery({ clientId: clientId ?? 0 }, { enabled: clientId !== null });
+  const deletionPreview = trpc.workspace.clientDeletionPreview.useQuery({ clientId: clientId ?? 0 }, { enabled: deleteDialogOpen && clientId !== null });
   const selectedClient = useMemo(() => clients.data?.find(client => client.id === clientId) ?? null, [clients.data, clientId]);
 
   useEffect(() => {
@@ -52,6 +59,14 @@ export default function Commercial() {
   const createContract = trpc.commercial.createContract.useMutation({ onSuccess: async () => { await refresh(); setContractForm({ code: "", title: "", scope: "", billingCycle: "monthly", recurring: "", proposalId: "" }); toast.success("Contrato registrado. Ative-o somente após a formalização externa."); }, onError: error => toast.error(error.message) });
   const updateContract = trpc.commercial.updateContractStatus.useMutation({ onSuccess: refresh, onError: error => toast.error(error.message) });
   const createEntry = trpc.commercial.createFinancialEntry.useMutation({ onSuccess: async () => { await refresh(); setEntryForm({ entryType: "revenue", description: "", amount: "", status: "planned" }); toast.success("Lançamento financeiro registrado."); }, onError: error => toast.error(error.message) });
+  const removeClient = trpc.workspace.deleteClient.useMutation({ onSuccess: async result => {
+    const deletedName = result.client.name;
+    setDeleteDialogOpen(false);
+    setDeletionConfirmation("");
+    setClientId(null);
+    await Promise.all([utils.workspace.clients.invalidate(), utils.workspace.preferences.invalidate(), utils.commercial.proposals.invalidate(), utils.commercial.contracts.invalidate(), utils.commercial.financialEntries.invalidate(), utils.commercial.profitability.invalidate(), utils.projects.list.invalidate(), utils.production.tasks.invalidate(), utils.production.agenda.invalidate(), utils.agency.overview.invalidate(), utils.agency.credentialStatuses.invalidate(), utils.agency.usageByClient.invalidate()]);
+    toast.success(`${deletedName} e os dados vinculados foram excluídos.`);
+  }, onError: error => toast.error(error.message) });
 
   function submitLead(event: FormEvent) { event.preventDefault(); createLead.mutate({ companyName: leadForm.companyName, contactName: leadForm.contactName || null, contactEmail: leadForm.contactEmail || null, source: leadForm.source || null, estimatedMonthlyRevenueCents: leadForm.monthly ? amountToCents(leadForm.monthly) : null }); }
   function submitProposal(event: FormEvent) { event.preventDefault(); if (!clientId) return; createProposal.mutate({ clientId, leadId: proposalForm.leadId ? Number(proposalForm.leadId) : null, proposalNumber: proposalForm.proposalNumber, title: proposalForm.title, scope: proposalForm.scope, amountCents: amountToCents(proposalForm.amount) }); }
@@ -59,7 +74,7 @@ export default function Commercial() {
   function submitEntry(event: FormEvent) { event.preventDefault(); if (!clientId) return; createEntry.mutate({ clientId, entryType: entryForm.entryType, status: entryForm.status, description: entryForm.description, amountCents: amountToCents(entryForm.amount) }); }
 
   return <StudioShell title="Clientes & comercial" eyebrow="01 · Oportunidades, contratos e margem"><div className="commercial-page">
-    <section className="commercial-hero"><div><p className="commercial-kicker"><TrendingUp size={15} /> do primeiro contato à margem real</p><h2>Uma operação comercial conectada ao valor entregue.</h2><p>Centralize oportunidades, propostas, contratos e lançamentos. Os indicadores são derivados somente dos registros confirmados — sem estimativas ocultas ou métricas inventadas.</p></div><label className="commercial-picker">Cliente em análise<select value={clientId ?? ""} onChange={event => setClientId(Number(event.target.value))} disabled={!clients.data?.length}><option value="" disabled>Selecione um cliente</option>{(clients.data ?? []).map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label></section>
+    <section className="commercial-hero"><div><p className="commercial-kicker"><TrendingUp size={15} /> do primeiro contato à margem real</p><h2>Uma operação comercial conectada ao valor entregue.</h2><p>Centralize oportunidades, propostas, contratos e lançamentos. Os indicadores são derivados somente dos registros confirmados — sem estimativas ocultas ou métricas inventadas.</p></div><div className="commercial-client-actions"><label className="commercial-picker">Cliente em análise<select value={clientId ?? ""} onChange={event => setClientId(Number(event.target.value))} disabled={!clients.data?.length}><option value="" disabled>Selecione um cliente</option>{(clients.data ?? []).map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><button type="button" className="commercial-delete-trigger" disabled={!selectedClient} onClick={() => { setDeletionConfirmation(""); setDeleteDialogOpen(true); }}><Trash2 size={14} /> Excluir cliente</button></div></section>
 
     <section className="commercial-metrics" aria-label="Indicadores de rentabilidade">
       <article><span><CircleDollarSign size={17} /></span><small>Receita líquida registrada</small><strong>{profitability.data ? formatBRL(profitability.data.revenueCents - profitability.data.refundCents) : "—"}</strong><p>Receitas menos reembolsos em lançamentos faturados, pagos ou vencidos.</p></article>
@@ -77,5 +92,12 @@ export default function Commercial() {
 
       <article className="commercial-panel"><header><div><p className="commercial-kicker"><CircleDollarSign size={14} /> visão financeira</p><h3>Lançamentos</h3><p>Registre apenas valores confirmados ou explicitamente planejados para leitura honesta da margem.</p></div><span>{entries.data?.length ?? 0} lançamento(s)</span></header><form onSubmit={submitEntry} className="commercial-form compact"><select value={entryForm.entryType} onChange={event => setEntryForm(current => ({ ...current, entryType: event.target.value as typeof current.entryType }))}>{Object.entries(entryTypeLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={entryForm.status} onChange={event => setEntryForm(current => ({ ...current, status: event.target.value as typeof current.status }))}><option value="planned">Planejado</option><option value="invoiced">Faturado</option><option value="paid">Pago</option><option value="overdue">Vencido</option><option value="cancelled">Cancelado</option></select><input required value={entryForm.description} onChange={event => setEntryForm(current => ({ ...current, description: event.target.value }))} placeholder="Descrição" /><input required value={entryForm.amount} inputMode="decimal" onChange={event => setEntryForm(current => ({ ...current, amount: event.target.value }))} placeholder="Valor (R$)" /><button className="ops-primary-button" disabled={!clientId || createEntry.isPending} type="submit">{createEntry.isPending ? <Loader2 size={15} /> : <Plus size={15} />} Adicionar lançamento</button></form><div className="commercial-list">{!entries.data?.length ? <p className="commercial-empty">Nenhum lançamento financeiro para este cliente.</p> : entries.data.map(({ entry }) => <div className="commercial-row" key={entry.id}><div><strong>{entryTypeLabel[entry.entryType]} · {entry.description}</strong><small>{formatBRL(entry.amountCents)} · {entry.status === "planned" ? "Planejado" : entry.status === "invoiced" ? "Faturado" : entry.status === "paid" ? "Pago" : entry.status === "overdue" ? "Vencido" : "Cancelado"}</small></div><span className={`commercial-entry-type ${entry.entryType}`}>{entry.entryType === "revenue" ? "+" : "−"}</span></div>)}</div></article>
     </section>
+    {deleteDialogOpen && selectedClient ? <ClientDeletionDialog clientName={selectedClient.name} dependencies={deletionPreview.data?.dependencies} confirmation={deletionConfirmation} loading={deletionPreview.isLoading} pending={removeClient.isPending} onConfirmationChange={setDeletionConfirmation} onClose={() => { if (!removeClient.isPending) { setDeleteDialogOpen(false); setDeletionConfirmation(""); } }} onConfirm={() => removeClient.mutate({ clientId: selectedClient.id, confirmationName: deletionConfirmation })} /> : null}
   </div></StudioShell>;
+}
+
+export function ClientDeletionDialog({ clientName, dependencies, confirmation, loading, pending, onConfirmationChange, onClose, onConfirm }: { clientName: string; dependencies?: { projects: number; campaigns: number; channels: number; tickets: number; portalMembers: number }; confirmation: string; loading: boolean; pending: boolean; onConfirmationChange: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
+  const confirmed = canConfirmClientDeletion(confirmation, clientName);
+  const impacts = dependencies ? [[dependencies.projects, "projeto(s) e suas tarefas"], [dependencies.campaigns, "campanha(s), versões e aprovações"], [dependencies.channels, "canal(is) de atendimento"], [dependencies.tickets, "ticket(s) de suporte"], [dependencies.portalMembers, "acesso(s) ao portal"]].filter(([value]) => Number(value) > 0) : [];
+  return <div className="commercial-delete-backdrop" role="presentation"><section className="commercial-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-client-title"><span className="commercial-delete-icon"><AlertTriangle size={20} /></span><p className="commercial-delete-kicker">Ação permanente</p><h2 id="delete-client-title">Excluir {clientName}?</h2><p>Esta remoção apaga a conta e os dados vinculados deste espaço de trabalho. A ação não pode ser desfeita.</p>{loading ? <div className="commercial-delete-loading"><Loader2 size={16} className="spin" /> Conferindo impacto da exclusão…</div> : <><div className="commercial-delete-impact"><strong>Dados que serão removidos</strong>{impacts.length ? <ul>{impacts.map(([value, label]) => <li key={String(label)}><b>{value}</b> {label}</li>)}</ul> : <span>Não há projetos, campanhas, canais, tickets ou acessos registrados para este cliente.</span>}</div><label className="commercial-delete-confirmation">Para confirmar, digite <b>{clientName}</b><input autoFocus value={confirmation} onChange={event => onConfirmationChange(event.target.value)} placeholder={clientName} aria-label={`Digite ${clientName} para confirmar`} /></label></>}<div className="commercial-delete-actions"><button type="button" className="ops-ghost-button" disabled={pending} onClick={onClose}>Cancelar</button><button type="button" className="commercial-delete-button" disabled={loading || pending || !confirmed} onClick={onConfirm}>{pending ? <Loader2 size={15} className="spin" /> : <Trash2 size={15} />} Excluir definitivamente</button></div></section></div>;
 }
