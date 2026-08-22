@@ -15,7 +15,7 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-import { agencyModeOptions, buildCarouselPreview, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, guidedServiceCatalog, parseCarouselTemplateFields, ProviderConnectionDialog, providerCatalog, publicationGuardrail, reorderCarouselPreview } from "./Agency";
+import { agencyModeOptions, buildCarouselPreview, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, getProviderTestDiagnostic, guidedServiceCatalog, parseCarouselTemplateFields, ProviderConnectionDialog, providerCatalog, publicationGuardrail, reorderCarouselPreview } from "./Agency";
 
 describe("modos da Agência IA", () => {
   it("mantém fluxos integrados e separados para o mesmo briefing", () => {
@@ -81,6 +81,9 @@ describe("modos da Agência IA", () => {
   it("expõe provedores configuráveis e mantém a publicação externa sob decisão humana", () => {
     expect(providerCatalog.map(item => item.value)).toEqual(["manus", "openai", "openai_compatible", "gemini", "anthropic"]);
     expect(providerCatalog.find(item => item.value === "manus")?.description).toContain("sem colar uma chave externa");
+    expect(providerCatalog.find(item => item.value === "openai")?.docsUrl).toBe("https://developers.openai.com/api/docs");
+    expect(providerCatalog.find(item => item.value === "gemini")?.docsUrl).toBe("https://ai.google.dev/gemini-api/docs");
+    expect(providerCatalog.find(item => item.value === "anthropic")?.docsUrl).toBe("https://platform.claude.com/docs/en/home");
     expect(publicationGuardrail).toContain("não envia conteúdo automaticamente");
   });
 
@@ -100,6 +103,12 @@ describe("modos da Agência IA", () => {
     expect(formatLastConnectionTest(new Date("2026-08-20T02:00:00.000Z"))).toMatch(/20\/08\/2026/);
   });
 
+  it("traduz falhas técnicas em orientações acionáveis sem retornar detalhes brutos", () => {
+    expect(getProviderTestDiagnostic("A chave de API foi recusada pelo provedor.")).toMatchObject({ title: "A chave não foi aceita" });
+    expect(getProviderTestDiagnostic("O teste de conexão excedeu o tempo esperado. Tente novamente.")).toMatchObject({ title: "O provedor demorou para responder" });
+    expect(getProviderTestDiagnostic("Não foi possível alcançar o provedor. Verifique a URL e tente novamente.")).toMatchObject({ title: "Não foi possível alcançar o provedor" });
+  });
+
   it("renderiza a edição incompatível com nova chave, aviso de teste e salvamento bloqueado", () => {
     const html = renderToStaticMarkup(createElement(ProviderConnectionDialog, {
       open: true,
@@ -109,13 +118,15 @@ describe("modos da Agência IA", () => {
       provider: { label: "OpenAI do cliente", provider: "openai", model: "gpt-5", imageModel: "", baseUrl: "", apiKey: "" },
       setProvider: () => undefined,
       editing: true,
-      selectedProvider: { value: "openai", label: "OpenAI", defaultModel: "gpt-5-mini", description: "Para texto, estratégia e ideação do cliente." },
+      selectedProvider: { value: "openai", label: "OpenAI", defaultModel: "gpt-5-mini", description: "Para texto, estratégia e ideação do cliente.", docsUrl: "https://developers.openai.com/api/docs", docsLabel: "Documentação da OpenAI" },
       saving: false,
       testing: false,
-      testState: "idle",
+      testState: "failed",
       testIsCurrent: false,
       requiresTest: true,
       requiresNewKey: true,
+      testError: "A chave de API foi recusada pelo provedor.",
+      onConfigurationChange: () => undefined,
       onTest: () => undefined,
     }));
 
@@ -123,9 +134,11 @@ describe("modos da Agência IA", () => {
     expect(html).toContain("Defina a configuração");
     expect(html).toContain("Teste antes de proteger");
     expect(html).toContain("Manus integrado");
+    expect(html).toContain("Documentação da OpenAI");
+    expect(html).toContain("A chave não foi aceita");
     expect(html).toContain("Você alterou o provedor, URL ou modelo");
     expect(html).toContain("Nova chave de API");
-    expect(html).toContain("A alteração exige uma nova chave e uma validação concluída.");
+    expect(html).toContain("O teste falhou. Corrija o item indicado e repita a validação.");
     expect(html).toMatch(/<button[^>]*disabled[^>]*>.*Salvar alterações/);
   });
 });

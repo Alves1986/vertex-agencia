@@ -241,3 +241,6 @@
 - [x] Cobrir os módulos comerciais e de inteligência com testes, validação visual responsiva e documentação operacional.
 - [x] Aprimorar o card de adição de motor de IA com etapas claras de provedor, modelo, chave, teste de conexão e salvamento seguro.
 - [x] Validar o card de motor de IA em desktop e celular, mantendo bloqueios de credencial e geração existentes.
+- [x] Integrar ícones oficiais e links contextuais para a documentação dos provedores de IA suportados no card de motor.
+- [x] Aprimorar o teste obrigatório de conexão com carregamento claro e diagnósticos acionáveis que não exponham credenciais ou respostas brutas.
+- [x] Cobrir e validar os novos estados de identidade, documentação e diagnóstico do motor de IA em desktop e celular.
