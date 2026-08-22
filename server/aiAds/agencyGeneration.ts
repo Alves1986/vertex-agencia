@@ -31,7 +31,7 @@ export type ProviderUsage = {
 };
 
 type Connection = {
-  provider: "manus" | "openai" | "openai_compatible" | "gemini" | "anthropic";
+  provider: "manus" | "openai" | "openai_compatible" | "gemini" | "anthropic" | "nvidia";
   defaultModel: string;
   apiBaseUrl: string | null;
   encryptedApiKey: string | null;
@@ -106,7 +106,7 @@ export async function testAgencyConnection(connection: ConnectionProbe): Promise
     const base = (connection.apiBaseUrl || "https://api.anthropic.com/v1").replace(/\/$/, "");
     await probeProvider(`${base}/models?limit=1`, { headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } });
   } else {
-    const base = (connection.apiBaseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
+    const base = (connection.apiBaseUrl || (connection.provider === "nvidia" ? "https://integrate.api.nvidia.com/v1" : "https://api.openai.com/v1")).replace(/\/$/, "");
     await probeProvider(`${base}/models`, { headers: { Authorization: `Bearer ${apiKey}` } });
   }
   return { provider: connection.provider, message: "Conexão validada. A chave pode ser protegida para este cliente." };
@@ -133,7 +133,7 @@ export async function generateAgencyOutput(connection: Connection | null, prompt
     const response = await callJson(`${base}/messages`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }, body: JSON.stringify({ model, max_tokens: 4000, system: "Você entrega JSON válido, sem markdown.", messages: [{ role: "user", content: prompt }] }) }, payload => payload.content?.[0]?.text || "", "anthropic");
     return { ...response, provider: connection.provider, model };
   }
-  const base = (connection.apiBaseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
+  const base = (connection.apiBaseUrl || (connection.provider === "nvidia" ? "https://integrate.api.nvidia.com/v1" : "https://api.openai.com/v1")).replace(/\/$/, "");
   const response = await callJson(`${base}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model, response_format: { type: "json_object" }, messages: [{ role: "system", content: "Você entrega JSON válido, sem markdown." }, { role: "user", content: prompt }] }) }, payload => payload.choices?.[0]?.message?.content || "", connection.provider);
   return { ...response, provider: connection.provider, model };
 }

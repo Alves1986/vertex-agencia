@@ -248,3 +248,6 @@
 - [x] Corrigir o fluxo de validação para preservar o token de teste quando campos não sensíveis são alterados e permitir o salvamento seguro da chave validada.
 - [x] Cobrir e validar visualmente o card corrigido em desktop e celular, incluindo a liberação do botão de salvar após teste válido.
 - [x] Corrigir o fundo do corpo do modal de motor de IA para eliminar a transparência e preservar legibilidade sobre a tela subjacente.
+- [x] Adicionar NVIDIA NIM como provedor de IA com validação segura de chave e documentação contextual oficial.
+- [x] Adicionar seleção de modelo de resposta por provedor, com presets recomendados e opção de identificador personalizado.
+- [x] Cobrir NVIDIA e a seleção de modelos com testes, build e validação responsiva do card.

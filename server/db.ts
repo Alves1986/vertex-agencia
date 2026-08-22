@@ -524,7 +524,7 @@ export async function addProjectArtifacts(userId: number, projectId: number, art
   await db.insert(projectArtifacts).values(artifacts.map(artifact => ({ projectId, ...artifact })));
 }
 
-type ProviderKind = "manus" | "openai" | "openai_compatible" | "gemini" | "anthropic";
+type ProviderKind = "manus" | "openai" | "openai_compatible" | "gemini" | "anthropic" | "nvidia";
 type CampaignMode = "ads" | "carousel" | "bundle";
 type CampaignStatus = "draft" | "generating" | "ready" | "review" | "approved" | "failed";
 type GenerationKind = "strategy" | "ads" | "carousel" | "bundle" | "image";

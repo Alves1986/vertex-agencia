@@ -12,7 +12,7 @@ import { siAnthropic, siGooglegemini } from "simple-icons";
 import "./agency-review.css";
 
 type Mode = "ads" | "carousel" | "bundle" | "strategy" | "video" | "council";
-type ProviderKind = "manus" | "openai" | "openai_compatible" | "gemini" | "anthropic";
+type ProviderKind = "manus" | "openai" | "openai_compatible" | "gemini" | "anthropic" | "nvidia";
 type ProviderForm = { label: string; provider: ProviderKind; model: string; imageModel: string; baseUrl: string; apiKey: string };
 type PublicationTarget = { id: number; title: string };
 type CampaignProviderTarget = { id: number; title: string };
@@ -125,7 +125,17 @@ export const providerCatalog: Array<{ value: ProviderKind; label: string; defaul
   { value: "openai_compatible", label: "OpenAI compatível", defaultModel: "gpt-5-mini", description: "Para gateways ou provedores compatíveis com OpenAI." },
   { value: "gemini", label: "Google Gemini", defaultModel: "gemini-2.5-flash", description: "Para fluxos baseados no ecossistema Google.", docsUrl: "https://ai.google.dev/gemini-api/docs", docsLabel: "Documentação Gemini" },
   { value: "anthropic", label: "Anthropic", defaultModel: "claude-sonnet-4-6", description: "Para análise, escrita e raciocínio assistido.", docsUrl: "https://platform.claude.com/docs/en/home", docsLabel: "Documentação Claude" },
+  { value: "nvidia", label: "NVIDIA NIM", defaultModel: "meta/llama-3.3-70b-instruct", description: "Para modelos abertos acelerados pela NVIDIA, sujeitos ao catálogo habilitado do cliente.", docsUrl: "https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html", docsLabel: "Documentação NVIDIA NIM" },
 ];
+
+export const providerModelPresets: Record<ProviderKind, Array<{ value: string; label: string }>> = {
+  manus: [{ value: "gpt-5-mini", label: "GPT-5 mini — integrado" }],
+  openai: [{ value: "gpt-5-mini", label: "GPT-5 mini — rápido" }, { value: "gpt-5", label: "GPT-5 — maior capacidade" }],
+  openai_compatible: [{ value: "gpt-5-mini", label: "GPT-5 mini — exemplo compatível" }],
+  gemini: [{ value: "gemini-2.5-flash", label: "Gemini 2.5 Flash — rápido" }, { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro — análise" }],
+  anthropic: [{ value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 — equilíbrio" }, { value: "claude-opus-4-6", label: "Claude Opus 4.6 — maior capacidade" }],
+  nvidia: [{ value: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct — recomendado" }, { value: "nvidia/llama-3.1-nemotron-70b-instruct", label: "NVIDIA Nemotron 70B — instruções" }, { value: "qwen/qwen3-235b-a22b", label: "Qwen3 235B — raciocínio" }],
+};
 
 export function getProviderTestDiagnostic(message?: string | null) {
   const normalized = message?.toLocaleLowerCase("pt-BR") ?? "";
@@ -544,6 +554,8 @@ export function ProviderConnectionDialog({ open, onOpenChange, onSubmit, onCance
             : "O teste é obrigatório para uma chave nova ou alterada.";
   const diagnostic = getProviderTestDiagnostic(testError);
   const showDiagnostic = testState === "failed";
+  const modelPresets = providerModelPresets[provider.provider];
+  const usesCustomModel = !modelPresets.some(item => item.value === provider.model);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -558,16 +570,16 @@ export function ProviderConnectionDialog({ open, onOpenChange, onSubmit, onCance
           </div>
           <div className="agency-provider-dialog-body">
             <section className="agency-provider-choice">
-              <div className="agency-provider-section-heading"><div><span>Etapa 1</span><strong>Escolha o motor</strong></div><small>As cinco opções ficam disponíveis nesta faixa.</small></div>
+              <div className="agency-provider-section-heading"><div><span>Etapa 1</span><strong>Escolha o motor</strong></div><small>As {providerCatalog.length} opções ficam disponíveis nesta faixa.</small></div>
               <div className="agency-provider-option-grid" role="radiogroup" aria-label="Motor de IA">
                 {providerCatalog.map(item => <button key={item.value} type="button" className={provider.provider === item.value ? "is-selected" : ""} role="radio" aria-checked={provider.provider === item.value} onClick={() => chooseProvider(item.value)}><ProviderBrandIcon provider={item.value} /><strong>{item.label}</strong><small>{item.value === "manus" ? "Sem chave externa" : item.value === "openai_compatible" ? "Gateway compatível" : "Chave do cliente"}</small></button>)}
               </div>
-              <div className="agency-provider-selected-card"><span className="agency-provider-selected-icon"><ProviderBrandIcon provider={selectedProvider.value} /></span><div><span>Motor selecionado</span><strong>{selectedProvider.label} · {selectedProvider.defaultModel}</strong><p>{selectedProvider.description}</p></div><em>{selectedProvider.value === "manus" ? "Sem chave" : "Chave própria"}</em></div>
+              <div className="agency-provider-selected-card"><span className="agency-provider-selected-icon"><ProviderBrandIcon provider={selectedProvider.value} /></span><div><span>Motor selecionado</span><strong>{selectedProvider.label} · {provider.model || "Selecione um modelo"}</strong><p>{selectedProvider.description}</p></div><em>{selectedProvider.value === "manus" ? "Sem chave" : "Chave própria"}</em></div>
               {selectedProvider.docsUrl ? <a className="agency-provider-doc-link" href={selectedProvider.docsUrl} target="_blank" rel="noreferrer"><ExternalLink size={13} /> {selectedProvider.docsLabel} <span>abre em nova aba</span></a> : <p className="agency-provider-doc-note">{selectedProvider.value === "openai_compatible" ? "Use a documentação do gateway contratado para confirmar URL, modelo e permissões." : "A VERTEX gerencia este motor integrado sem exigir documentação ou chave externa."}</p>}
             </section>
             <section className="agency-provider-configuration">
               <div className="agency-provider-section-heading"><div><span>Etapa 2</span><strong>Defina a configuração</strong></div><small>{provider.provider === "manus" ? "O motor integrado dispensa chave externa." : "Use os dados autorizados pelo cliente."}</small></div>
-              <div className="agency-dialog-fields"><Field label="Nome da conexão" value={provider.label} onChange={label => update({ label })} placeholder="Ex.: OpenAI · Marketing" required /><Field label="Modelo de texto" value={provider.model} onChange={model => update({ model }, true)} placeholder="Modelo de texto" required /><Field label="Modelo de imagem (opcional)" value={provider.imageModel} onChange={imageModel => update({ imageModel })} placeholder="Modelo de imagem, se houver" />{provider.provider !== "manus" ? <><Field label={provider.provider === "openai_compatible" ? "URL base do gateway" : "URL base (opcional)"} value={provider.baseUrl} onChange={baseUrl => update({ baseUrl }, true)} placeholder="https://..." /><Field label={requiresNewKey ? "Nova chave de API (obrigatória)" : editing ? "Nova chave de API (opcional)" : "Chave de API"} value={provider.apiKey} onChange={apiKey => update({ apiKey }, true)} placeholder="Cole a chave do cliente" type="password" autoComplete="new-password" required={!editing || requiresNewKey} /></> : <div className="agency-provider-integrated-note"><ShieldCheck size={16} /><p>O Manus integrado usa a infraestrutura da VERTEX. Nenhuma chave externa será solicitada ou armazenada.</p></div>}</div>
+              <div className="agency-dialog-fields"><Field label="Nome da conexão" value={provider.label} onChange={label => update({ label })} placeholder="Ex.: NVIDIA · Conteúdo" required /><label className="agency-field"><span>Modelo de IA que responderá</span><select value={usesCustomModel ? "__custom__" : provider.model} onChange={event => update({ model: event.target.value === "__custom__" ? "" : event.target.value }, true)}><option value="" disabled>Selecione o modelo</option>{modelPresets.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}<option value="__custom__">Informar identificador personalizado…</option></select></label>{usesCustomModel ? <Field label="Identificador do modelo personalizado" value={provider.model} onChange={model => update({ model }, true)} placeholder="Ex.: fornecedor/modelo-habilitado" required /> : <Field label="Modelo de imagem (opcional)" value={provider.imageModel} onChange={imageModel => update({ imageModel })} placeholder="Modelo de imagem, se houver" />}{usesCustomModel ? <Field label="Modelo de imagem (opcional)" value={provider.imageModel} onChange={imageModel => update({ imageModel })} placeholder="Modelo de imagem, se houver" /> : null}{provider.provider !== "manus" ? <><Field label={provider.provider === "openai_compatible" ? "URL base do gateway" : provider.provider === "nvidia" ? "URL NVIDIA NIM (opcional)" : "URL base (opcional)"} value={provider.baseUrl} onChange={baseUrl => update({ baseUrl }, true)} placeholder={provider.provider === "nvidia" ? "https://integrate.api.nvidia.com/v1" : "https://..."} /><Field label={requiresNewKey ? "Nova chave de API (obrigatória)" : editing ? "Nova chave de API (opcional)" : "Chave de API"} value={provider.apiKey} onChange={apiKey => update({ apiKey }, true)} placeholder="Cole a chave do cliente" type="password" autoComplete="new-password" required={!editing || requiresNewKey} /></> : <div className="agency-provider-integrated-note"><ShieldCheck size={16} /><p>O Manus integrado usa a infraestrutura da VERTEX. Nenhuma chave externa será solicitada ou armazenada.</p></div>}</div>
             </section>
             <section className="agency-provider-validation">
               <div className="agency-provider-section-heading"><div><span>Etapa 3</span><strong>Teste antes de proteger</strong></div><small>O botão de salvar será liberado logo após um teste válido.</small></div>

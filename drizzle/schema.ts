@@ -233,7 +233,7 @@ export const clientAiConnections = mysqlTable(
     clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
     ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
     label: varchar("label", { length: 120 }).notNull(),
-    provider: mysqlEnum("provider", ["manus", "openai", "openai_compatible", "gemini", "anthropic"]).notNull(),
+    provider: mysqlEnum("provider", ["manus", "openai", "openai_compatible", "gemini", "anthropic", "nvidia"]).notNull(),
     apiBaseUrl: varchar("apiBaseUrl", { length: 500 }),
     defaultModel: varchar("defaultModel", { length: 180 }).notNull(),
     defaultImageModel: varchar("defaultImageModel", { length: 180 }),

@@ -62,7 +62,7 @@ import { buildAgencyPrompt, generateAgencyOutput, testAgencyConnection, type Age
 import { issueConnectionVerification, verifyConnectionVerification } from "../aiAds/connectionVerification";
 import { getOperationalUserId } from "./helpers";
 
-const providerSchema = z.enum(["manus", "openai", "openai_compatible", "gemini", "anthropic"]);
+const providerSchema = z.enum(["manus", "openai", "openai_compatible", "gemini", "anthropic", "nvidia"]);
 const modeSchema = z.enum(["ads", "carousel", "bundle", "strategy", "video", "council"]);
 const profileSchema = z.object({ clientId: z.number().int().positive(), positioning: z.string().max(4000).optional().nullable(), voice: z.string().max(240).optional().nullable(), audience: z.string().max(4000).optional().nullable(), offers: z.string().max(4000).optional().nullable(), proofPolicy: z.string().max(4000).optional().nullable(), visualSystem: z.string().max(4000).optional().nullable(), departmentContextJson: z.string().max(12000).optional().nullable() });
 const carouselSlideSchema = z.object({ slideNumber: z.number().int().min(1).max(10), role: z.enum(["cover", "context", "insight", "proof", "solution", "cta"]), headline: z.string().trim().min(1).max(500), body: z.string().max(2000).optional().nullable(), visualDirection: z.string().max(2000).optional().nullable(), imagePrompt: z.string().max(2000).optional().nullable() });

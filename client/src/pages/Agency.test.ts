@@ -15,7 +15,7 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-import { agencyModeOptions, buildCarouselPreview, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, getProviderTestDiagnostic, guidedServiceCatalog, parseCarouselTemplateFields, ProviderConnectionDialog, providerCatalog, publicationGuardrail, reorderCarouselPreview } from "./Agency";
+import { agencyModeOptions, buildCarouselPreview, buildGuidedBriefing, buildGuidedCampaignPayload, formatLastConnectionTest, getCampaignGenerationBlock, getConnectionRevalidationState, getGuidedCreationValidation, getProviderTestDiagnostic, guidedServiceCatalog, parseCarouselTemplateFields, ProviderConnectionDialog, providerCatalog, providerModelPresets, publicationGuardrail, reorderCarouselPreview } from "./Agency";
 
 describe("modos da Agência IA", () => {
   it("mantém fluxos integrados e separados para o mesmo briefing", () => {
@@ -79,11 +79,13 @@ describe("modos da Agência IA", () => {
   });
 
   it("expõe provedores configuráveis e mantém a publicação externa sob decisão humana", () => {
-    expect(providerCatalog.map(item => item.value)).toEqual(["manus", "openai", "openai_compatible", "gemini", "anthropic"]);
+    expect(providerCatalog.map(item => item.value)).toEqual(["manus", "openai", "openai_compatible", "gemini", "anthropic", "nvidia"]);
     expect(providerCatalog.find(item => item.value === "manus")?.description).toContain("sem colar uma chave externa");
     expect(providerCatalog.find(item => item.value === "openai")?.docsUrl).toBe("https://developers.openai.com/api/docs");
     expect(providerCatalog.find(item => item.value === "gemini")?.docsUrl).toBe("https://ai.google.dev/gemini-api/docs");
     expect(providerCatalog.find(item => item.value === "anthropic")?.docsUrl).toBe("https://platform.claude.com/docs/en/home");
+    expect(providerCatalog.find(item => item.value === "nvidia")?.docsUrl).toBe("https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html");
+    expect(providerModelPresets.nvidia.map(item => item.value)).toContain("meta/llama-3.3-70b-instruct");
     expect(publicationGuardrail).toContain("não envia conteúdo automaticamente");
   });
 
@@ -135,6 +137,8 @@ describe("modos da Agência IA", () => {
     expect(html).toContain("Teste antes de proteger");
     expect(html).toContain("Manus integrado");
     expect(html).toContain("Documentação da OpenAI");
+    expect(html).toContain("Modelo de IA que responderá");
+    expect(html).toContain("Informar identificador personalizado");
     expect(html).toContain("A chave não foi aceita");
     expect(html).toContain("Você alterou o provedor, URL ou modelo");
     expect(html).toContain("Nova chave de API");

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ invokeLLM: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invokeLLM: vi.fn(), decryptProviderKey: vi.fn() }));
 vi.mock("../_core/llm", () => ({ invokeLLM: mocks.invokeLLM }));
+vi.mock("./crypto", () => ({ decryptProviderKey: mocks.decryptProviderKey }));
 
 import { buildAgencyPrompt, extractProviderUsage, generateAgencyOutput, normalizeCarouselRole, testAgencyConnection } from "./agencyGeneration";
 
@@ -37,6 +38,19 @@ describe("generateAgencyOutput", () => {
     expect(normalizeCarouselRole("Próximo passo / convocação", 2, 3)).toBe("cta");
     expect(normalizeCarouselRole("Rótulo não mapeado", 1, 3)).toBe("insight");
   });
+
+  it("envia geração NVIDIA NIM pela rota OpenAI-compatível com o modelo selecionado", async () => {
+    mocks.decryptProviderKey.mockReturnValue("nvapi-test-secret");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ads: [{ headline: "Coleção", primaryText: "Conheça os acabamentos", cta: "Fale com a equipe", angle: "curadoria" }] }) } }], usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } }), { status: 200 }));
+
+    try {
+      await expect(generateAgencyOutput({ provider: "nvidia", defaultModel: "meta/llama-3.3-70b-instruct", apiBaseUrl: null, encryptedApiKey: "ciphertext" }, "Retorne anúncios.")).resolves.toMatchObject({ provider: "nvidia", model: "meta/llama-3.3-70b-instruct", usage: { totalTokens: 20 } });
+      expect(fetchMock).toHaveBeenCalledWith("https://integrate.api.nvidia.com/v1/chat/completions", expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer nvapi-test-secret" }) }));
+      expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toMatchObject({ model: "meta/llama-3.3-70b-instruct" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
 });
 
 describe("testAgencyConnection", () => {
@@ -46,6 +60,12 @@ describe("testAgencyConnection", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ data: [] }), { status: 200 }));
     await expect(testAgencyConnection({ provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5-mini", apiKey: "sk-test-secret" })).resolves.toEqual({ provider: "openai", message: "Conexão validada. A chave pode ser protegida para este cliente." });
     expect(fetchMock).toHaveBeenCalledWith("https://api.openai.com/v1/models", expect.objectContaining({ headers: { Authorization: "Bearer sk-test-secret" } }));
+  });
+
+  it("usa o endpoint NVIDIA NIM em nuvem quando uma URL própria não é configurada", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    await expect(testAgencyConnection({ provider: "nvidia", apiBaseUrl: null, defaultModel: "meta/llama-3.3-70b-instruct", apiKey: "nvapi-test-secret" })).resolves.toMatchObject({ provider: "nvidia" });
+    expect(fetchMock).toHaveBeenCalledWith("https://integrate.api.nvidia.com/v1/models", expect.objectContaining({ headers: { Authorization: "Bearer nvapi-test-secret" } }));
   });
 
   it("normaliza uma chave recusada sem vazar seu conteúdo", async () => {

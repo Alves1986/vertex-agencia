@@ -268,6 +268,17 @@ describe("agency generation review contracts", () => {
     expect(mocks.updateAdCampaignProvider).toHaveBeenCalledWith(7, 11, 4);
   });
 
+  it("aceita NVIDIA com o modelo selecionado para validação antes de qualquer persistência", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.testAgencyConnection.mockResolvedValue({ provider: "nvidia", message: "Conexão validada." });
+    mocks.issueConnectionVerification.mockReturnValue("nvidia-proof-token");
+    const caller = agencyRouter.createCaller(createContext());
+
+    await expect(caller.testProviderConnection({ provider: "nvidia", apiBaseUrl: null, defaultModel: "meta/llama-3.3-70b-instruct", apiKey: "nvapi-test-secret" })).resolves.toEqual({ provider: "nvidia", message: "Conexão validada.", verificationToken: "nvidia-proof-token" });
+    expect(mocks.testAgencyConnection).toHaveBeenCalledWith(expect.objectContaining({ provider: "nvidia", defaultModel: "meta/llama-3.3-70b-instruct" }));
+    expect(mocks.createClientAiConnection).not.toHaveBeenCalled();
+  });
+
   it("registra a data do teste somente para a configuração salva da conexão", async () => {
     mocks.getOperationalUserId.mockResolvedValue(7);
     mocks.getClientAiConnection.mockResolvedValue({ id: 4, provider: "openai", apiBaseUrl: null, defaultModel: "gpt-5-mini" });

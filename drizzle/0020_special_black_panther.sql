@@ -1,0 +1,1 @@
+ALTER TABLE `client_ai_connections` MODIFY COLUMN `provider` enum('manus','openai','openai_compatible','gemini','anthropic','nvidia') NOT NULL;
