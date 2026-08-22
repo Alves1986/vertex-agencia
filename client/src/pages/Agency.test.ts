@@ -141,4 +141,30 @@ describe("modos da Agência IA", () => {
     expect(html).toContain("O teste falhou. Corrija o item indicado e repita a validação.");
     expect(html).toMatch(/<button[^>]*disabled[^>]*>.*Salvar alterações/);
   });
+
+  it("libera o salvamento após teste válido sem exigir nova validação por modelo de imagem opcional", () => {
+    const html = renderToStaticMarkup(createElement(ProviderConnectionDialog, {
+      open: true,
+      onOpenChange: () => undefined,
+      onSubmit: event => event.preventDefault(),
+      onCancel: () => undefined,
+      provider: { label: "OpenAI do cliente", provider: "openai", model: "gpt-5-mini", imageModel: "gpt-image-1", baseUrl: "", apiKey: "sk-validada" },
+      setProvider: () => undefined,
+      editing: false,
+      selectedProvider: { value: "openai", label: "OpenAI", defaultModel: "gpt-5-mini", description: "Para texto, estratégia e ideação do cliente.", docsUrl: "https://developers.openai.com/api/docs", docsLabel: "Documentação da OpenAI" },
+      saving: false,
+      testing: false,
+      testState: "passed",
+      testError: null,
+      testIsCurrent: true,
+      requiresTest: true,
+      requiresNewKey: false,
+      onConfigurationChange: () => undefined,
+      onTest: () => undefined,
+    }));
+
+    expect(html).toContain("Conexão validada. Pode salvar com segurança.");
+    expect(html).toContain("agency-provider-dialog-body");
+    expect(html).toMatch(/<button class="ops-primary-button" type="submit">.*Proteger conexão/);
+  });
 });

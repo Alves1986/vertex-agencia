@@ -244,3 +244,6 @@
 - [x] Integrar ícones oficiais e links contextuais para a documentação dos provedores de IA suportados no card de motor.
 - [x] Aprimorar o teste obrigatório de conexão com carregamento claro e diagnósticos acionáveis que não exponham credenciais ou respostas brutas.
 - [x] Cobrir e validar os novos estados de identidade, documentação e diagnóstico do motor de IA em desktop e celular.
+- [x] Corrigir o modal de motor de IA para manter todas as opções e etapas em um único painel rolável e utilizável.
+- [x] Corrigir o fluxo de validação para preservar o token de teste quando campos não sensíveis são alterados e permitir o salvamento seguro da chave validada.
+- [x] Cobrir e validar visualmente o card corrigido em desktop e celular, incluindo a liberação do botão de salvar após teste válido.
