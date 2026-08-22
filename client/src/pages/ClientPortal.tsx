@@ -1,8 +1,9 @@
 import { trpc } from "@/lib/trpc";
-import { ArrowLeft, Bot, CalendarDays, CheckCircle2, CircleAlert, MessageCircleMore, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowLeft, Bot, CalendarDays, CheckCircle2, CircleAlert, ClipboardCheck, LifeBuoy, MessageCircleMore, Send, ShieldCheck } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { inboxStatusCopy } from "./WhatsApp";
+import { toast } from "sonner";
 import "./whatsapp-saas.css";
 
 export function clientSubscriptionStatusCopy(status: string | null | undefined) {
@@ -14,8 +15,20 @@ export default function ClientPortal() {
   const workspaces = trpc.whatsapp.clientPortalWorkspaces.useQuery();
   const [clientId, setClientId] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  const [portalTicket, setPortalTicket] = useState({ subject: "", description: "", priority: "normal" as "low" | "normal" | "high" | "urgent" });
   const overview = trpc.whatsapp.clientPortalOverview.useQuery({ clientId: clientId ?? 0 }, { enabled: clientId !== null });
   const messages = trpc.whatsapp.clientPortalConversationMessages.useQuery({ clientId: clientId ?? 0, conversationId: conversationId ?? 0 }, { enabled: clientId !== null && conversationId !== null });
+  const onboarding = trpc.success.clientPortalOnboarding.useQuery({ clientId: clientId ?? 0 }, { enabled: clientId !== null });
+  const tickets = trpc.success.clientPortalTickets.useQuery({ clientId: clientId ?? 0 }, { enabled: clientId !== null });
+  const utils = trpc.useUtils();
+  const createTicket = trpc.success.createClientPortalTicket.useMutation({
+    onSuccess: async () => {
+      await utils.success.clientPortalTickets.invalidate();
+      setPortalTicket({ subject: "", description: "", priority: "normal" });
+      toast.success("Sua solicitação foi enviada à equipe VERTEX.");
+    },
+    onError: error => toast.error(error.message),
+  });
 
   useEffect(() => {
     if (clientId === null && workspaces.data?.[0]) setClientId(workspaces.data[0].clientId);
@@ -28,6 +41,11 @@ export default function ClientPortal() {
     }
     if (!overview.data.conversations.some(conversation => conversation.id === conversationId)) setConversationId(overview.data.conversations[0].id);
   }, [conversationId, overview.data?.conversations]);
+
+  function submitPortalTicket(event: FormEvent) {
+    event.preventDefault();
+    if (clientId) createTicket.mutate({ clientId, ...portalTicket });
+  }
 
   const portal = overview.data;
   return <main className="client-portal-shell">
@@ -43,6 +61,11 @@ export default function ClientPortal() {
           <article><CheckCircle2 size={18} /><span>Assinatura</span><strong>{clientSubscriptionStatusCopy(portal.subscription?.status)}</strong><small>{portal.subscription?.planName ?? "Plano ainda não vinculado"}</small></article>
           <article><Bot size={18} /><span>Atendimento por IA</span><strong>{portal.policy?.aiAccessMode === "vertex_managed" ? "IA VERTEX" : portal.policy?.aiAccessMode === "client_api_key" ? "IA do cliente" : "Em configuração"}</strong><small>{portal.policy?.workflowMode === "draft_for_approval" ? "Respostas passam por revisão" : portal.policy?.workflowMode === "handoff_only" ? "Encaminhamento humano" : "Automação conforme política"}</small></article>
           <article><CalendarDays size={18} /><span>Canais</span><strong>{portal.channels.filter(channel => channel.status === "active").length} ativo(s)</strong><small>{portal.channels.length} canal(is) autorizado(s)</small></article>
+        </section>
+
+        <section className="client-portal-content client-portal-success-content">
+          <article className="client-portal-card"><div className="client-portal-card-title"><ClipboardCheck size={18} /><div><h2>Implantação</h2><p>Etapas conduzidas pela VERTEX para colocar sua operação em andamento.</p></div></div>{onboarding.isLoading ? <div className="wa-empty">Atualizando onboarding…</div> : <div className="client-portal-checklist">{["Marca e diretrizes", "Contatos autorizados", "IA e segurança", "Atendimento", "Objetivos", "Revisão operacional"].map((label, index) => <div className={onboarding.data?.completedSteps.length && onboarding.data.completedSteps.length > index ? "is-done" : ""} key={label}><CheckCircle2 size={15} /><span>{label}</span></div>)}</div>}<p className="client-portal-footnote">{onboarding.data?.completedAt ? "Implantação concluída e registrada." : "A VERTEX atualiza este acompanhamento conforme cada validação é concluída."}</p></article>
+          <article className="client-portal-card"><div className="client-portal-card-title"><LifeBuoy size={18} /><div><h2>Suporte</h2><p>Abra uma solicitação e acompanhe os temas ativos da sua operação.</p></div></div><div className="client-portal-ticket-list">{tickets.isLoading ? <div className="wa-empty">Carregando solicitações…</div> : !(tickets.data?.length) ? <div className="wa-empty">Nenhuma solicitação registrada.</div> : tickets.data.slice(0, 4).map(item => <div key={item.id}><strong>#{item.id} · {item.subject}</strong><span className={`success-status ${item.status}`}>{item.status.replace("_", " ")}</span><small>Atualizado em {new Date(item.updatedAt).toLocaleString("pt-BR")}</small></div>)}</div><form className="client-portal-ticket-form" onSubmit={submitPortalTicket}><label>Assunto<input required value={portalTicket.subject} onChange={event => setPortalTicket(current => ({ ...current, subject: event.target.value }))} placeholder="Como podemos ajudar?" /></label><label>Prioridade<select value={portalTicket.priority} onChange={event => setPortalTicket(current => ({ ...current, priority: event.target.value as typeof current.priority }))}><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label><label>Descrição<textarea required value={portalTicket.description} onChange={event => setPortalTicket(current => ({ ...current, description: event.target.value }))} placeholder="Descreva a necessidade para a equipe." /></label><button type="submit" disabled={createTicket.isPending}><Send size={14} /> {createTicket.isPending ? "Enviando…" : "Enviar solicitação"}</button></form></article>
         </section>
 
         <section className="client-portal-content">

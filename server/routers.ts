@@ -8,6 +8,7 @@ import { productionRouter } from "./routers/production";
 import { projectsRouter } from "./routers/projects";
 import { workspaceRouter } from "./routers/workspace";
 import { agencyRouter } from "./routers/agency";
+import { successRouter } from "./routers/success";
 import { whatsappRouter } from "./routers/whatsapp";
 
 export const appRouter = router({
@@ -26,6 +27,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   originalApp: originalAppRouter,
   agency: agencyRouter,
+  success: successRouter,
   whatsapp: whatsappRouter,
 });
 

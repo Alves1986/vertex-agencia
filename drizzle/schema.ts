@@ -1,4 +1,5 @@
 import {
+  foreignKey,
   index,
   int,
   mysqlEnum,
@@ -404,6 +405,142 @@ export const clientAgencyProfiles = mysqlTable(
     uniqueIndex("client_agency_profiles_client_unique").on(table.clientId),
     index("client_agency_profiles_owner_idx").on(table.ownerUserId),
   ],
+);
+
+export const clientAccessGrants = mysqlTable(
+  "client_access_grants",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    email: varchar("email", { length: 320 }).notNull(),
+    displayName: varchar("displayName", { length: 180 }),
+    role: mysqlEnum("role", ["client_admin", "manager", "reviewer", "viewer"]).default("viewer").notNull(),
+    status: mysqlEnum("status", ["pending", "active", "revoked"]).default("pending").notNull(),
+    invitedByUserId: int("invitedByUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    acceptedAt: timestamp("acceptedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [uniqueIndex("client_access_grants_client_email_unique").on(table.clientId, table.email), index("client_access_grants_owner_client_idx").on(table.ownerUserId, table.clientId)],
+);
+
+export const clientOnboardingProgress = mysqlTable(
+  "client_onboarding_progress",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    currentStep: mysqlEnum("currentStep", ["brand", "contacts", "ai", "whatsapp", "goals", "review", "complete"]).default("brand").notNull(),
+    completedStepsJson: text("completedStepsJson").notNull(),
+    goals: text("goals"),
+    reviewNote: text("reviewNote"),
+    completedAt: timestamp("completedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [uniqueIndex("client_onboarding_progress_client_unique").on(table.clientId), index("client_onboarding_progress_owner_idx").on(table.ownerUserId)],
+);
+
+export const clientBrandGuidelines = mysqlTable(
+  "client_brand_guidelines",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    colorsJson: text("colorsJson").notNull(),
+    fontsJson: text("fontsJson").notNull(),
+    toneOfVoice: text("toneOfVoice"),
+    prohibitedWordsJson: text("prohibitedWordsJson").notNull(),
+    approvedCtasJson: text("approvedCtasJson").notNull(),
+    productsJson: text("productsJson").notNull(),
+    differentiatorsJson: text("differentiatorsJson").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [uniqueIndex("client_brand_guidelines_client_unique").on(table.clientId), index("client_brand_guidelines_owner_idx").on(table.ownerUserId)],
+);
+
+export const supportTickets = mysqlTable(
+  "support_tickets",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    requesterEmail: varchar("requesterEmail", { length: 320 }).notNull(),
+    subject: varchar("subject", { length: 220 }).notNull(),
+    description: text("description").notNull(),
+    priority: mysqlEnum("priority", ["low", "normal", "high", "urgent"]).default("normal").notNull(),
+    status: mysqlEnum("status", ["open", "in_progress", "waiting_client", "resolved", "closed"]).default("open").notNull(),
+    dueAt: timestamp("dueAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("support_tickets_owner_client_idx").on(table.ownerUserId, table.clientId), index("support_tickets_status_idx").on(table.status)],
+);
+
+export const supportTicketUpdates = mysqlTable(
+  "support_ticket_updates",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ticketId: int("ticketId").notNull().references(() => supportTickets.id, { onDelete: "cascade" }),
+    authorUserId: int("authorUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    message: text("message").notNull(),
+    statusAfter: mysqlEnum("statusAfter", ["open", "in_progress", "waiting_client", "resolved", "closed"]),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("support_ticket_updates_ticket_idx").on(table.ticketId)],
+);
+
+export const externalApprovalLinks = mysqlTable(
+  "external_approval_links",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    campaignId: int("campaignId").notNull().references(() => adCampaigns.id, { onDelete: "cascade" }),
+    creativeVersionId: int("creativeVersionId").notNull(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    recipientEmail: varchar("recipientEmail", { length: 320 }).notNull(),
+    tokenHash: varchar("tokenHash", { length: 128 }).notNull(),
+    status: mysqlEnum("status", ["open", "approved", "changes_requested", "expired", "revoked"]).default("open").notNull(),
+    decisionNote: text("decisionNote"),
+    expiresAt: timestamp("expiresAt").notNull(),
+    decidedAt: timestamp("decidedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    foreignKey({ columns: [table.creativeVersionId], foreignColumns: [creativeVersions.id], name: "ext_approval_creative_fk" }).onDelete("cascade"),
+    uniqueIndex("external_approval_links_token_unique").on(table.tokenHash),
+    index("external_approval_links_owner_client_idx").on(table.ownerUserId, table.clientId),
+  ],
+);
+
+export const clientNotificationPreferences = mysqlTable(
+  "client_notification_preferences",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    eventsJson: text("eventsJson").notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [uniqueIndex("client_notification_preferences_client_unique").on(table.clientId), index("client_notification_preferences_owner_idx").on(table.ownerUserId)],
+);
+
+export const executiveReports = mysqlTable(
+  "executive_reports",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    periodStart: timestamp("periodStart").notNull(),
+    periodEnd: timestamp("periodEnd").notNull(),
+    title: varchar("title", { length: 220 }).notNull(),
+    summary: text("summary").notNull(),
+    metricsJson: text("metricsJson").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("executive_reports_owner_client_idx").on(table.ownerUserId, table.clientId), index("executive_reports_period_idx").on(table.periodStart, table.periodEnd)],
 );
 
 export const contentBriefs = mysqlTable(

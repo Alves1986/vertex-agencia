@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { createHash, randomBytes } from "node:crypto";
 import {
   adCampaigns,
   approvalHistoryEmailDeliveries,
@@ -11,13 +12,19 @@ import {
   carouselBriefTemplates,
   clientBrandAssetCollections,
   clientBrandAssets,
+  clientBrandGuidelines,
+  clientNotificationPreferences,
+  clientOnboardingProgress,
   creativeApprovals,
   creativeVersions,
   clientAgencyProfiles,
+  clientAccessGrants,
   clientAiConnections,
   clientPortalMembers,
   clients,
   contentBriefs,
+  executiveReports,
+  externalApprovalLinks,
   InsertUser,
   notifications,
   operators,
@@ -27,6 +34,8 @@ import {
   saasPlans,
   saasSubscriptions,
   strategyDecisions,
+  supportTicketUpdates,
+  supportTickets,
   tasks,
   teams,
   trendSignals,
@@ -1837,4 +1846,365 @@ export async function createStrategyDecision(userId: number, input: {
 export async function listStrategyDecisions(userId: number, clientId: number) {
   const db = await requireDb();
   return db.select().from(strategyDecisions).where(and(eq(strategyDecisions.ownerUserId, userId), eq(strategyDecisions.clientId, clientId))).orderBy(desc(strategyDecisions.updatedAt));
+}
+
+const portalWriterRoles = new Set(["client_admin", "manager", "reviewer"]);
+
+const defaultNotificationEvents = {
+  approvals: true,
+  usage_limit: true,
+  channel_status: true,
+  email_failures: true,
+  due_dates: true,
+  billing: true,
+  support: true,
+};
+
+type ClientNotificationEvent = keyof typeof defaultNotificationEvents;
+type OnboardingStep = "brand" | "contacts" | "ai" | "whatsapp" | "goals" | "review" | "complete";
+
+function parseJsonList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every(item => typeof item === "string") ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeNotificationEvents(value: Partial<Record<ClientNotificationEvent, boolean>> | null | undefined) {
+  return { ...defaultNotificationEvents, ...(value ?? {}) };
+}
+
+async function assertOwnedSuccessClient(userId: number, clientId: number) {
+  const db = await requireDb();
+  const client = (await db.select({ id: clients.id, name: clients.name, contactEmail: clients.contactEmail }).from(clients).where(and(eq(clients.id, clientId), eq(clients.createdByUserId, userId))).limit(1))[0];
+  if (!client) throw new Error("Cliente não encontrado neste espaço de trabalho.");
+  return client;
+}
+
+async function getClientPortalMembershipForSuccess(openId: string, clientId: number) {
+  const db = await requireDb();
+  const membership = (await db.select({ userId: users.id, email: users.email, role: clientPortalMembers.role, clientId: clientPortalMembers.clientId, clientName: clients.name }).from(clientPortalMembers).innerJoin(users, eq(users.id, clientPortalMembers.userId)).innerJoin(clients, eq(clients.id, clientPortalMembers.clientId)).where(and(eq(users.openId, openId), eq(clientPortalMembers.clientId, clientId), eq(clientPortalMembers.status, "active"))).limit(1))[0];
+  if (!membership) throw new Error("Você não possui acesso ativo a este espaço de cliente.");
+  return membership;
+}
+
+async function notifyConfiguredClientEvent(userId: number, clientId: number, event: ClientNotificationEvent, input: { title: string; message: string; type: "approval" | "deadline" | "comment" | "delivery" | "system"; actionPath?: string | null }) {
+  const preferences = await getClientNotificationPreferences(userId, clientId);
+  if (!preferences.events[event]) return;
+  await createNotification(userId, { ...input, actionPath: input.actionPath ?? null });
+}
+
+/** Convites independentes do login: o acesso permanece pendente até uma aceitação explícita. */
+export async function listClientAccessGrants(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  return db.select({ id: clientAccessGrants.id, clientId: clientAccessGrants.clientId, email: clientAccessGrants.email, displayName: clientAccessGrants.displayName, role: clientAccessGrants.role, status: clientAccessGrants.status, acceptedAt: clientAccessGrants.acceptedAt, createdAt: clientAccessGrants.createdAt, updatedAt: clientAccessGrants.updatedAt, invitedByName: users.name }).from(clientAccessGrants).leftJoin(users, eq(users.id, clientAccessGrants.invitedByUserId)).where(and(eq(clientAccessGrants.clientId, clientId), eq(clientAccessGrants.ownerUserId, userId))).orderBy(asc(clientAccessGrants.email));
+}
+
+export async function upsertClientAccessGrant(userId: number, input: { clientId: number; email: string; displayName?: string | null; role: "client_admin" | "manager" | "reviewer" | "viewer" }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const email = input.email.trim().toLowerCase();
+  const existing = (await db.select({ id: clientAccessGrants.id, status: clientAccessGrants.status }).from(clientAccessGrants).where(and(eq(clientAccessGrants.clientId, input.clientId), eq(clientAccessGrants.email, email), eq(clientAccessGrants.ownerUserId, userId))).limit(1))[0];
+  if (existing) {
+    await db.update(clientAccessGrants).set({ displayName: input.displayName?.trim() || null, role: input.role, status: existing.status === "revoked" ? "pending" : existing.status, invitedByUserId: userId }).where(eq(clientAccessGrants.id, existing.id));
+    return existing.id;
+  }
+  const [created] = await db.insert(clientAccessGrants).values({ clientId: input.clientId, ownerUserId: userId, email, displayName: input.displayName?.trim() || null, role: input.role, status: "pending", invitedByUserId: userId }).$returningId();
+  return created.id;
+}
+
+export async function updateClientAccessGrantStatus(userId: number, input: { clientId: number; grantId: number; status: "pending" | "active" | "revoked" }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const result = await db.update(clientAccessGrants).set({ status: input.status, acceptedAt: input.status === "active" ? new Date() : null }).where(and(eq(clientAccessGrants.id, input.grantId), eq(clientAccessGrants.clientId, input.clientId), eq(clientAccessGrants.ownerUserId, userId)));
+  if (!result[0]?.affectedRows) throw new Error("Convite não encontrado neste cliente.");
+  return input.grantId;
+}
+
+export async function acceptOwnClientAccessGrant(openId: string, clientId: number) {
+  const db = await requireDb();
+  const user = (await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.openId, openId)).limit(1))[0];
+  if (!user?.email) throw new Error("Seu perfil precisa ter um e-mail confirmado para aceitar um convite.");
+  const grant = (await db.select().from(clientAccessGrants).where(and(eq(clientAccessGrants.clientId, clientId), eq(clientAccessGrants.email, user.email.trim().toLowerCase()), eq(clientAccessGrants.status, "pending"))).limit(1))[0];
+  if (!grant) throw new Error("Não há convite pendente para este cliente e este e-mail.");
+  const portalRole = grant.role === "reviewer" ? "viewer" : grant.role;
+  await db.update(clientAccessGrants).set({ status: "active", acceptedAt: new Date() }).where(eq(clientAccessGrants.id, grant.id));
+  await db.insert(clientPortalMembers).values({ clientId, userId: user.id, invitedByUserId: grant.invitedByUserId, role: portalRole, status: "active" }).onDuplicateKeyUpdate({ set: { role: portalRole, status: "active", invitedByUserId: grant.invitedByUserId } });
+  await db.insert(whatsappAuditLogs).values({ clientId, actorUserId: user.id, action: "portal.invite_accepted", entityType: "client_access_grant", entityId: grant.id, detailsJson: JSON.stringify({ role: grant.role }) });
+  return { clientId, role: grant.role };
+}
+
+export async function getClientOnboardingProgress(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const row = (await db.select().from(clientOnboardingProgress).where(and(eq(clientOnboardingProgress.clientId, clientId), eq(clientOnboardingProgress.ownerUserId, userId))).limit(1))[0];
+  return row ? { ...row, completedSteps: parseJsonList(row.completedStepsJson) } : { clientId, currentStep: "brand" as const, completedSteps: [], goals: null, reviewNote: null, completedAt: null };
+}
+
+export async function getClientPortalOnboardingProgress(openId: string, clientId: number) {
+  await getClientPortalMembershipForSuccess(openId, clientId);
+  const db = await requireDb();
+  const owner = (await db.select({ ownerUserId: clients.createdByUserId }).from(clients).where(eq(clients.id, clientId)).limit(1))[0];
+  if (!owner) throw new Error("Cliente não encontrado.");
+  const onboarding = await getClientOnboardingProgress(owner.ownerUserId, clientId);
+  return { clientId, currentStep: onboarding.currentStep, completedSteps: onboarding.completedSteps, completedAt: onboarding.completedAt };
+}
+
+export async function upsertClientOnboardingProgress(userId: number, input: { clientId: number; currentStep: OnboardingStep; completedSteps: OnboardingStep[]; goals?: string | null; reviewNote?: string | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const completedSteps = Array.from(new Set(input.completedSteps.filter(step => step !== "complete")));
+  const requiredSteps: Exclude<OnboardingStep, "complete">[] = ["brand", "contacts", "ai", "whatsapp", "goals", "review"];
+  const isComplete = input.currentStep === "complete" || requiredSteps.every(step => completedSteps.includes(step));
+  const values = { currentStep: isComplete ? "complete" as const : input.currentStep, completedStepsJson: JSON.stringify(completedSteps), goals: input.goals?.trim() || null, reviewNote: input.reviewNote?.trim() || null, completedAt: isComplete ? new Date() : null };
+  const existing = (await db.select({ id: clientOnboardingProgress.id }).from(clientOnboardingProgress).where(and(eq(clientOnboardingProgress.clientId, input.clientId), eq(clientOnboardingProgress.ownerUserId, userId))).limit(1))[0];
+  if (existing) await db.update(clientOnboardingProgress).set(values).where(eq(clientOnboardingProgress.id, existing.id));
+  else await db.insert(clientOnboardingProgress).values({ clientId: input.clientId, ownerUserId: userId, ...values });
+  return { ...values, completedSteps };
+}
+
+export async function getClientBrandGuidelines(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const row = (await db.select().from(clientBrandGuidelines).where(and(eq(clientBrandGuidelines.clientId, clientId), eq(clientBrandGuidelines.ownerUserId, userId))).limit(1))[0];
+  if (!row) return null;
+  return { ...row, colors: parseJsonList(row.colorsJson), fonts: parseJsonList(row.fontsJson), prohibitedWords: parseJsonList(row.prohibitedWordsJson), approvedCtas: parseJsonList(row.approvedCtasJson), products: parseJsonList(row.productsJson), differentiators: parseJsonList(row.differentiatorsJson) };
+}
+
+export async function upsertClientBrandGuidelines(userId: number, input: { clientId: number; colors: string[]; fonts: string[]; toneOfVoice?: string | null; prohibitedWords: string[]; approvedCtas: string[]; products: string[]; differentiators: string[] }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const cleanList = (values: string[]) => Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
+  const values = { colorsJson: JSON.stringify(cleanList(input.colors)), fontsJson: JSON.stringify(cleanList(input.fonts)), toneOfVoice: input.toneOfVoice?.trim() || null, prohibitedWordsJson: JSON.stringify(cleanList(input.prohibitedWords)), approvedCtasJson: JSON.stringify(cleanList(input.approvedCtas)), productsJson: JSON.stringify(cleanList(input.products)), differentiatorsJson: JSON.stringify(cleanList(input.differentiators)) };
+  const existing = (await db.select({ id: clientBrandGuidelines.id }).from(clientBrandGuidelines).where(and(eq(clientBrandGuidelines.clientId, input.clientId), eq(clientBrandGuidelines.ownerUserId, userId))).limit(1))[0];
+  if (existing) {
+    await db.update(clientBrandGuidelines).set(values).where(eq(clientBrandGuidelines.id, existing.id));
+    return existing.id;
+  }
+  const [created] = await db.insert(clientBrandGuidelines).values({ clientId: input.clientId, ownerUserId: userId, ...values }).$returningId();
+  return created.id;
+}
+
+export async function listSupportTickets(userId: number, clientId?: number) {
+  const db = await requireDb();
+  if (clientId) await assertOwnedSuccessClient(userId, clientId);
+  const conditions = [eq(supportTickets.ownerUserId, userId)];
+  if (clientId) conditions.push(eq(supportTickets.clientId, clientId));
+  return db.select({ ticket: supportTickets, clientName: clients.name }).from(supportTickets).innerJoin(clients, eq(clients.id, supportTickets.clientId)).where(and(...conditions)).orderBy(desc(supportTickets.updatedAt));
+}
+
+export async function getSupportTicket(userId: number, clientId: number, ticketId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const ticket = (await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.clientId, clientId), eq(supportTickets.ownerUserId, userId))).limit(1))[0];
+  if (!ticket) throw new Error("Ticket não encontrado neste cliente.");
+  const updates = await db.select({ id: supportTicketUpdates.id, ticketId: supportTicketUpdates.ticketId, message: supportTicketUpdates.message, statusAfter: supportTicketUpdates.statusAfter, createdAt: supportTicketUpdates.createdAt, authorName: users.name }).from(supportTicketUpdates).leftJoin(users, eq(users.id, supportTicketUpdates.authorUserId)).where(eq(supportTicketUpdates.ticketId, ticketId)).orderBy(asc(supportTicketUpdates.createdAt));
+  return { ticket, updates };
+}
+
+export async function createSupportTicket(userId: number, input: { clientId: number; requesterEmail: string; subject: string; description: string; priority: "low" | "normal" | "high" | "urgent"; dueAt?: Date | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const [created] = await db.insert(supportTickets).values({ clientId: input.clientId, ownerUserId: userId, requesterEmail: input.requesterEmail.trim().toLowerCase(), subject: input.subject.trim(), description: input.description.trim(), priority: input.priority, dueAt: input.dueAt ?? null }).$returningId();
+  await notifyConfiguredClientEvent(userId, input.clientId, "support", { type: "system", title: `Novo ticket: ${input.subject.trim()}`, message: `O ticket #${created.id} foi aberto para acompanhamento.`, actionPath: `/suporte?cliente=${input.clientId}` });
+  return created.id;
+}
+
+export async function addSupportTicketUpdate(userId: number, input: { clientId: number; ticketId: number; message: string; statusAfter?: "open" | "in_progress" | "waiting_client" | "resolved" | "closed" | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const ticket = (await db.select({ id: supportTickets.id }).from(supportTickets).where(and(eq(supportTickets.id, input.ticketId), eq(supportTickets.clientId, input.clientId), eq(supportTickets.ownerUserId, userId))).limit(1))[0];
+  if (!ticket) throw new Error("Ticket não encontrado neste cliente.");
+  const [created] = await db.insert(supportTicketUpdates).values({ ticketId: input.ticketId, authorUserId: userId, message: input.message.trim(), statusAfter: input.statusAfter ?? null }).$returningId();
+  if (input.statusAfter) await db.update(supportTickets).set({ status: input.statusAfter }).where(eq(supportTickets.id, input.ticketId));
+  return created.id;
+}
+
+export async function listClientPortalSupportTickets(openId: string, clientId: number) {
+  await getClientPortalMembershipForSuccess(openId, clientId);
+  const db = await requireDb();
+  return db.select().from(supportTickets).where(eq(supportTickets.clientId, clientId)).orderBy(desc(supportTickets.updatedAt));
+}
+
+export async function createClientPortalSupportTicket(openId: string, input: { clientId: number; subject: string; description: string; priority: "low" | "normal" | "high" | "urgent" }) {
+  const db = await requireDb();
+  const membership = await getClientPortalMembershipForSuccess(openId, input.clientId);
+  if (!portalWriterRoles.has(membership.role)) throw new Error("Seu papel no portal permite apenas consultar os tickets deste cliente.");
+  const client = (await db.select({ ownerUserId: clients.createdByUserId }).from(clients).where(eq(clients.id, input.clientId)).limit(1))[0];
+  if (!client) throw new Error("Cliente não encontrado.");
+  const [created] = await db.insert(supportTickets).values({ clientId: input.clientId, ownerUserId: client.ownerUserId, requesterEmail: membership.email || "portal@vertex.local", subject: input.subject.trim(), description: input.description.trim(), priority: input.priority }).$returningId();
+  await notifyConfiguredClientEvent(client.ownerUserId, input.clientId, "support", { type: "system", title: `Novo ticket do portal: ${input.subject.trim()}`, message: `O ticket #${created.id} foi aberto pelo portal do cliente.`, actionPath: `/suporte?cliente=${input.clientId}` });
+  return created.id;
+}
+
+export async function addClientPortalSupportTicketUpdate(openId: string, input: { clientId: number; ticketId: number; message: string }) {
+  const db = await requireDb();
+  const membership = await getClientPortalMembershipForSuccess(openId, input.clientId);
+  if (!portalWriterRoles.has(membership.role)) throw new Error("Seu papel no portal permite apenas consultar os tickets deste cliente.");
+  const ticket = (await db.select({ id: supportTickets.id }).from(supportTickets).where(and(eq(supportTickets.id, input.ticketId), eq(supportTickets.clientId, input.clientId))).limit(1))[0];
+  if (!ticket) throw new Error("Ticket não encontrado neste cliente.");
+  const [created] = await db.insert(supportTicketUpdates).values({ ticketId: input.ticketId, authorUserId: membership.userId, message: input.message.trim(), statusAfter: "waiting_client" }).$returningId();
+  await db.update(supportTickets).set({ status: "waiting_client" }).where(eq(supportTickets.id, input.ticketId));
+  return created.id;
+}
+
+export async function createExternalApprovalLink(userId: number, input: { clientId: number; campaignId: number; creativeVersionId: number; recipientEmail: string; expiresAt: Date }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  if (input.expiresAt.getTime() <= Date.now()) throw new Error("Defina um prazo futuro para a aprovação externa.");
+  const version = (await db.select({ id: creativeVersions.id, campaignId: creativeVersions.campaignId, summary: creativeVersions.summary }).from(creativeVersions).innerJoin(adCampaigns, eq(adCampaigns.id, creativeVersions.campaignId)).where(and(eq(creativeVersions.id, input.creativeVersionId), eq(creativeVersions.campaignId, input.campaignId), eq(creativeVersions.ownerUserId, userId), eq(adCampaigns.clientId, input.clientId), eq(adCampaigns.ownerUserId, userId))).limit(1))[0];
+  if (!version) throw new Error("A versão criativa não pertence à campanha e ao cliente selecionados.");
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const [created] = await db.insert(externalApprovalLinks).values({ clientId: input.clientId, campaignId: input.campaignId, creativeVersionId: input.creativeVersionId, ownerUserId: userId, recipientEmail: input.recipientEmail.trim().toLowerCase(), tokenHash, expiresAt: input.expiresAt }).$returningId();
+  await db.insert(whatsappAuditLogs).values({ clientId: input.clientId, actorUserId: userId, action: "approval.external_link_created", entityType: "external_approval_link", entityId: created.id, detailsJson: JSON.stringify({ campaignId: input.campaignId, creativeVersionId: input.creativeVersionId, expiresAt: input.expiresAt.toISOString() }) });
+  return { id: created.id, token, expiresAt: input.expiresAt, creativeSummary: version.summary };
+}
+
+export async function listExternalApprovalLinks(userId: number, clientId: number, campaignId?: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const conditions = [eq(externalApprovalLinks.clientId, clientId), eq(externalApprovalLinks.ownerUserId, userId)];
+  if (campaignId) conditions.push(eq(externalApprovalLinks.campaignId, campaignId));
+  const rows = await db.select({ id: externalApprovalLinks.id, clientId: externalApprovalLinks.clientId, campaignId: externalApprovalLinks.campaignId, creativeVersionId: externalApprovalLinks.creativeVersionId, recipientEmail: externalApprovalLinks.recipientEmail, status: externalApprovalLinks.status, decisionNote: externalApprovalLinks.decisionNote, expiresAt: externalApprovalLinks.expiresAt, decidedAt: externalApprovalLinks.decidedAt, createdAt: externalApprovalLinks.createdAt, campaignName: adCampaigns.name, creativeSummary: creativeVersions.summary }).from(externalApprovalLinks).innerJoin(adCampaigns, eq(adCampaigns.id, externalApprovalLinks.campaignId)).innerJoin(creativeVersions, eq(creativeVersions.id, externalApprovalLinks.creativeVersionId)).where(and(...conditions)).orderBy(desc(externalApprovalLinks.createdAt));
+  return rows.map(row => row.status === "open" && row.expiresAt.getTime() <= Date.now() ? { ...row, status: "expired" as const } : row);
+}
+
+export async function revokeExternalApprovalLink(userId: number, clientId: number, linkId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const result = await db.update(externalApprovalLinks).set({ status: "revoked" }).where(and(eq(externalApprovalLinks.id, linkId), eq(externalApprovalLinks.clientId, clientId), eq(externalApprovalLinks.ownerUserId, userId), eq(externalApprovalLinks.status, "open")));
+  if (!result[0]?.affectedRows) throw new Error("O link não está disponível para revogação.");
+  await db.insert(whatsappAuditLogs).values({ clientId, actorUserId: userId, action: "approval.external_link_revoked", entityType: "external_approval_link", entityId: linkId, detailsJson: null });
+  return linkId;
+}
+
+export async function getExternalApprovalByToken(token: string) {
+  const db = await requireDb();
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const row = (await db.select({ id: externalApprovalLinks.id, clientId: externalApprovalLinks.clientId, campaignId: externalApprovalLinks.campaignId, creativeVersionId: externalApprovalLinks.creativeVersionId, status: externalApprovalLinks.status, decisionNote: externalApprovalLinks.decisionNote, expiresAt: externalApprovalLinks.expiresAt, decidedAt: externalApprovalLinks.decidedAt, campaignName: adCampaigns.name, campaignObjective: adCampaigns.objective, creativeKind: creativeVersions.kind, versionNumber: creativeVersions.versionNumber, creativeSummary: creativeVersions.summary, payloadJson: creativeVersions.payloadJson, creativeStatus: creativeVersions.status }).from(externalApprovalLinks).innerJoin(adCampaigns, eq(adCampaigns.id, externalApprovalLinks.campaignId)).innerJoin(creativeVersions, eq(creativeVersions.id, externalApprovalLinks.creativeVersionId)).where(eq(externalApprovalLinks.tokenHash, tokenHash)).limit(1))[0];
+  if (!row) throw new Error("Link de aprovação inválido ou indisponível.");
+  if (row.status === "open" && row.expiresAt.getTime() <= Date.now()) {
+    await db.update(externalApprovalLinks).set({ status: "expired" }).where(eq(externalApprovalLinks.id, row.id));
+    return { ...row, status: "expired" as const };
+  }
+  return row;
+}
+
+export async function decideExternalApprovalByToken(token: string, input: { decision: "approved" | "changes_requested"; note?: string | null }) {
+  const db = await requireDb();
+  const approval = await getExternalApprovalByToken(token);
+  if (approval.status !== "open") throw new Error("Esta aprovação já foi encerrada e não aceita nova decisão.");
+  const status = input.decision;
+  await db.update(externalApprovalLinks).set({ status, decisionNote: input.note?.trim() || null, decidedAt: new Date() }).where(and(eq(externalApprovalLinks.id, approval.id), eq(externalApprovalLinks.status, "open")));
+  const owner = (await db.select({ ownerUserId: externalApprovalLinks.ownerUserId }).from(externalApprovalLinks).where(eq(externalApprovalLinks.id, approval.id)).limit(1))[0];
+  if (owner) {
+    await db.insert(whatsappAuditLogs).values({ clientId: approval.clientId, actorUserId: null, action: "approval.external_decision", entityType: "external_approval_link", entityId: approval.id, detailsJson: JSON.stringify({ decision: input.decision, hasNote: Boolean(input.note?.trim()) }) });
+    await notifyConfiguredClientEvent(owner.ownerUserId, approval.clientId, "approvals", { type: "approval", title: `Aprovação externa ${input.decision === "approved" ? "concluída" : "com ajustes"}`, message: `A campanha “${approval.campaignName}” recebeu uma decisão externa.`, actionPath: `/agencia?campanha=${approval.campaignId}` });
+  }
+  return { id: approval.id, status, decidedAt: new Date() };
+}
+
+export async function getClientNotificationPreferences(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const row = (await db.select().from(clientNotificationPreferences).where(and(eq(clientNotificationPreferences.clientId, clientId), eq(clientNotificationPreferences.ownerUserId, userId))).limit(1))[0];
+  if (!row) return { clientId, events: { ...defaultNotificationEvents }, updatedAt: null };
+  let events: Partial<Record<ClientNotificationEvent, boolean>> = {};
+  try { events = JSON.parse(row.eventsJson) as Partial<Record<ClientNotificationEvent, boolean>>; } catch { events = {}; }
+  return { id: row.id, clientId: row.clientId, events: normalizeNotificationEvents(events), updatedAt: row.updatedAt };
+}
+
+export async function upsertClientNotificationPreferences(userId: number, input: { clientId: number; events: Partial<Record<ClientNotificationEvent, boolean>> }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const events = normalizeNotificationEvents(input.events);
+  const existing = (await db.select({ id: clientNotificationPreferences.id }).from(clientNotificationPreferences).where(and(eq(clientNotificationPreferences.clientId, input.clientId), eq(clientNotificationPreferences.ownerUserId, userId))).limit(1))[0];
+  if (existing) {
+    await db.update(clientNotificationPreferences).set({ eventsJson: JSON.stringify(events) }).where(eq(clientNotificationPreferences.id, existing.id));
+    return existing.id;
+  }
+  const [created] = await db.insert(clientNotificationPreferences).values({ clientId: input.clientId, ownerUserId: userId, eventsJson: JSON.stringify(events) }).$returningId();
+  return created.id;
+}
+
+export async function getClientHealth(userId: number, clientId: number) {
+  const db = await requireDb();
+  const client = await assertOwnedSuccessClient(userId, clientId);
+  const monthStart = getCurrentMonthStart();
+  const [onboarding, subscriptionRows, channels, credentials, tickets, emailFailures, pendingApprovals, usage] = await Promise.all([
+    getClientOnboardingProgress(userId, clientId),
+    db.select({ status: saasSubscriptions.status, currentPeriodEnd: saasSubscriptions.currentPeriodEnd, planName: saasPlans.name }).from(saasSubscriptions).leftJoin(saasPlans, eq(saasPlans.id, saasSubscriptions.planId)).where(and(eq(saasSubscriptions.clientId, clientId), eq(saasSubscriptions.ownerUserId, userId))).limit(1),
+    db.select({ id: whatsappChannels.id, status: whatsappChannels.status, lastError: whatsappChannels.lastError }).from(whatsappChannels).where(and(eq(whatsappChannels.clientId, clientId), eq(whatsappChannels.ownerUserId, userId))),
+    db.select({ id: clientAiConnections.id, status: clientAiConnections.status, lastTestedAt: clientAiConnections.lastTestedAt }).from(clientAiConnections).where(and(eq(clientAiConnections.clientId, clientId), eq(clientAiConnections.ownerUserId, userId))),
+    db.select({ id: supportTickets.id, status: supportTickets.status, priority: supportTickets.priority }).from(supportTickets).where(and(eq(supportTickets.clientId, clientId), eq(supportTickets.ownerUserId, userId))),
+    db.select({ id: approvalHistoryEmailDeliveries.id }).from(approvalHistoryEmailDeliveries).where(and(eq(approvalHistoryEmailDeliveries.clientId, clientId), eq(approvalHistoryEmailDeliveries.status, "failed"))),
+    db.select({ id: creativeVersions.id }).from(creativeVersions).innerJoin(adCampaigns, eq(adCampaigns.id, creativeVersions.campaignId)).where(and(eq(adCampaigns.clientId, clientId), eq(creativeVersions.ownerUserId, userId), eq(creativeVersions.status, "review"))),
+    db.select({ id: aiGenerations.id }).from(aiGenerations).innerJoin(adCampaigns, eq(adCampaigns.id, aiGenerations.campaignId)).where(and(eq(adCampaigns.clientId, clientId), eq(aiGenerations.ownerUserId, userId), gte(aiGenerations.createdAt, monthStart))),
+  ]);
+  const subscription = subscriptionRows[0] ?? null;
+  const activeChannels = channels.filter(channel => channel.status === "active").length;
+  const credentialHealthy = credentials.some(credential => credential.status === "active" && credential.lastTestedAt);
+  const openTickets = tickets.filter(ticket => !["resolved", "closed"].includes(ticket.status));
+  const urgentTickets = openTickets.filter(ticket => ticket.priority === "urgent" || ticket.priority === "high");
+  const onboardingComplete = onboarding.currentStep === "complete";
+  const limit = (await db.select({ monthlyApiCallLimit: clients.monthlyApiCallLimit }).from(clients).where(eq(clients.id, clientId)).limit(1))[0]?.monthlyApiCallLimit ?? null;
+  const usagePercent = limit ? Math.round((usage.length / limit) * 100) : null;
+  const nextActions = [
+    !onboardingComplete ? "Concluir as etapas restantes do onboarding." : null,
+    !credentialHealthy ? "Validar uma credencial de IA ativa para o cliente." : null,
+    channels.length === 0 ? "Configurar um canal de WhatsApp quando aplicável ao contrato." : activeChannels === 0 ? "Revisar o status dos canais de WhatsApp." : null,
+    urgentTickets.length ? "Priorizar tickets de suporte críticos ou altos." : null,
+    pendingApprovals.length ? "Concluir versões criativas pendentes de revisão." : null,
+    emailFailures.length ? "Revisar os alertas de falha de e-mail." : null,
+    usagePercent !== null && usagePercent >= 80 ? "Revisar o consumo de IA próximo ao limite mensal." : null,
+  ].filter((action): action is string => Boolean(action));
+  const score = Math.max(0, 100 - (onboardingComplete ? 0 : 20) - (credentialHealthy ? 0 : 15) - (channels.length && activeChannels === 0 ? 15 : 0) - Math.min(25, urgentTickets.length * 10) - Math.min(15, emailFailures.length * 5) - (usagePercent !== null && usagePercent >= 100 ? 10 : usagePercent !== null && usagePercent >= 80 ? 5 : 0));
+  return { client, score, status: score >= 85 ? "healthy" as const : score >= 60 ? "attention" as const : "risk" as const, onboarding: { currentStep: onboarding.currentStep, completedSteps: onboarding.completedSteps, complete: onboardingComplete }, subscription, ai: { activeCredentials: credentials.filter(credential => credential.status === "active").length, credentialHealthy, monthlyRequests: usage.length, monthlyLimit: limit, usagePercent }, channels: { total: channels.length, active: activeChannels, withErrors: channels.filter(channel => Boolean(channel.lastError)).length }, support: { open: openTickets.length, urgentOrHigh: urgentTickets.length }, approvals: { pending: pendingApprovals.length }, email: { recentFailures: emailFailures.length }, nextActions };
+}
+
+export async function createExecutiveReport(userId: number, input: { clientId: number; periodStart: Date; periodEnd: Date; title: string; summary: string; metrics: Record<string, unknown> }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  if (input.periodEnd.getTime() < input.periodStart.getTime()) throw new Error("O período final do relatório deve ser posterior ao inicial.");
+  const [created] = await db.insert(executiveReports).values({ clientId: input.clientId, ownerUserId: userId, periodStart: input.periodStart, periodEnd: input.periodEnd, title: input.title.trim(), summary: input.summary.trim(), metricsJson: JSON.stringify(input.metrics) }).$returningId();
+  return created.id;
+}
+
+export async function listExecutiveReports(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const rows = await db.select().from(executiveReports).where(and(eq(executiveReports.clientId, clientId), eq(executiveReports.ownerUserId, userId))).orderBy(desc(executiveReports.createdAt));
+  return rows.map(row => {
+    let metrics: Record<string, unknown> = {};
+    try { metrics = JSON.parse(row.metricsJson) as Record<string, unknown>; } catch { metrics = {}; }
+    return { ...row, metrics };
+  });
+}
+
+/** Exportação administrativa de dados: não contém chaves, cifras de credenciais, tokens ou configurações secretas. */
+export async function exportClientBackupSnapshot(userId: number, clientId: number) {
+  const db = await requireDb();
+  const client = await assertOwnedSuccessClient(userId, clientId);
+  const [profile, onboarding, guidelines, grants, preferences, campaigns, channels, policy, subscription, tickets, reports, approvals] = await Promise.all([
+    db.select().from(clientAgencyProfiles).where(and(eq(clientAgencyProfiles.clientId, clientId), eq(clientAgencyProfiles.ownerUserId, userId))).limit(1),
+    getClientOnboardingProgress(userId, clientId),
+    getClientBrandGuidelines(userId, clientId),
+    listClientAccessGrants(userId, clientId),
+    getClientNotificationPreferences(userId, clientId),
+    db.select({ id: adCampaigns.id, name: adCampaigns.name, mode: adCampaigns.mode, objective: adCampaigns.objective, status: adCampaigns.status, briefingJson: adCampaigns.briefingJson, createdAt: adCampaigns.createdAt, updatedAt: adCampaigns.updatedAt }).from(adCampaigns).where(and(eq(adCampaigns.clientId, clientId), eq(adCampaigns.ownerUserId, userId))).orderBy(desc(adCampaigns.updatedAt)),
+    db.select({ id: whatsappChannels.id, label: whatsappChannels.label, provider: whatsappChannels.provider, status: whatsappChannels.status, displayPhoneNumber: whatsappChannels.displayPhoneNumber, externalAccountId: whatsappChannels.externalAccountId, externalSenderId: whatsappChannels.externalSenderId, verifiedAt: whatsappChannels.verifiedAt, lastInboundAt: whatsappChannels.lastInboundAt, lastOutboundAt: whatsappChannels.lastOutboundAt, lastError: whatsappChannels.lastError, createdAt: whatsappChannels.createdAt, updatedAt: whatsappChannels.updatedAt }).from(whatsappChannels).where(and(eq(whatsappChannels.clientId, clientId), eq(whatsappChannels.ownerUserId, userId))),
+    db.select({ aiAccessMode: whatsappAiPolicies.aiAccessMode, workflowMode: whatsappAiPolicies.workflowMode, systemInstructions: whatsappAiPolicies.systemInstructions, businessHoursJson: whatsappAiPolicies.businessHoursJson, handoffKeywordsJson: whatsappAiPolicies.handoffKeywordsJson, monthlyManagedMessageLimit: whatsappAiPolicies.monthlyManagedMessageLimit, updatedAt: whatsappAiPolicies.updatedAt }).from(whatsappAiPolicies).where(and(eq(whatsappAiPolicies.clientId, clientId), eq(whatsappAiPolicies.ownerUserId, userId))).limit(1),
+    db.select({ status: saasSubscriptions.status, interval: saasSubscriptions.interval, currentPeriodEnd: saasSubscriptions.currentPeriodEnd, managedAiAddOn: saasSubscriptions.managedAiAddOn, managedAiMonthlyLimit: saasSubscriptions.managedAiMonthlyLimit, planName: saasPlans.name }).from(saasSubscriptions).leftJoin(saasPlans, eq(saasPlans.id, saasSubscriptions.planId)).where(and(eq(saasSubscriptions.clientId, clientId), eq(saasSubscriptions.ownerUserId, userId))).limit(1),
+    db.select().from(supportTickets).where(and(eq(supportTickets.clientId, clientId), eq(supportTickets.ownerUserId, userId))).orderBy(desc(supportTickets.updatedAt)),
+    listExecutiveReports(userId, clientId),
+    listExternalApprovalLinks(userId, clientId),
+  ]);
+  const ticketIds = tickets.map(ticket => ticket.id);
+  const updates = ticketIds.length ? await db.select({ id: supportTicketUpdates.id, ticketId: supportTicketUpdates.ticketId, message: supportTicketUpdates.message, statusAfter: supportTicketUpdates.statusAfter, createdAt: supportTicketUpdates.createdAt }).from(supportTicketUpdates).where(eq(supportTicketUpdates.ticketId, ticketIds[0])).orderBy(asc(supportTicketUpdates.createdAt)) : [];
+  return { format: "vertex-client-backup/v1", exportedAt: new Date().toISOString(), restoreInstructions: "Importe somente em ambiente administrativo VERTEX, valide o cliente de destino, reconcilie IDs relacionados e nunca substitua dados existentes sem um backup prévio. Credenciais de IA e de canais não são exportadas e devem ser reconfiguradas manualmente.", client: { id: client.id, name: client.name, contactEmail: client.contactEmail }, profile: profile[0] ?? null, onboarding, brandGuidelines: guidelines, accessGrants: grants, notificationPreferences: preferences, campaigns, whatsapp: { channels, policy: policy[0] ?? null, subscription: subscription[0] ?? null }, support: { tickets, updates }, executiveReports: reports, externalApprovals: approvals };
 }

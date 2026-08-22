@@ -217,3 +217,14 @@
 - [x] Remover a navegação lateral recolhível e restaurar abas de topo profissionais para as áreas principais do sistema.
 - [x] Preservar rotas, estados ativos, identidade VERTEX e adaptação móvel na navegação superior.
 - [x] Cobrir e validar a navegação superior em teste, desktop e celular antes da entrega.
+- [x] Implementar gestão de usuários por cliente com convites, papéis de administrador, gestor, revisor e leitura, remoção de acesso e auditoria.
+- [x] Criar onboarding guiado para marca, contatos autorizados, canal de WhatsApp, credenciais de IA, objetivos e revisão inicial.
+- [x] Criar painel de saúde do cliente com assinatura, consumo de IA, status de canais, falhas de e-mail, pendências e próximas ações.
+- [x] Implementar central de suporte com tickets, prioridade, estado, atualizações e acompanhamento de SLA.
+- [x] Criar biblioteca de marca ampliada com cores, fontes, tom de voz, palavras proibidas, CTAs aprovados, produtos e diferenciais.
+- [x] Criar aprovação externa por link seguro, com escopo mínimo, prazo, decisão e trilha de auditoria.
+- [x] Adicionar notificações configuráveis dentro do sistema para aprovações, consumo, canais, falhas, vencimentos e pagamentos.
+- [x] Implementar relatórios executivos mensais e a respectiva automação de envio ou geração sob demanda.
+- [x] Implementar relatórios executivos exclusivamente sob demanda nesta versão, preservando a futura extensão para automação mensal.
+- [x] Implementar exportação administrativa dos dados do cliente e um fluxo documentado de backup e restauração.
+- [x] Cobrir os novos módulos com testes integrados, validação visual responsiva e documentação de lançamento.
