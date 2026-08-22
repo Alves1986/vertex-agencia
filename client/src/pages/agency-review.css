@@ -38,10 +38,10 @@
 .agency-dialog form { display: grid; gap: 16px; }
 .agency-dialog-fields { display: grid; gap: 11px; grid-template-columns: repeat(2,minmax(0,1fr)); }
 .agency-dialog-fields .agency-field:first-child, .agency-dialog-fields .agency-field:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.agency-provider-dialog { max-height: calc(100dvh - 24px); max-width: 860px; overflow: hidden; padding: 0; }
+.agency-provider-dialog { background: #fff !important; max-height: calc(100dvh - 24px); max-width: 860px; overflow: hidden; padding: 0; }
 .agency-provider-dialog form { display: grid; gap: 0; grid-template-rows: auto minmax(0, 1fr) auto; max-height: calc(100dvh - 24px); min-height: 0; }
 .agency-provider-dialog-header { background: #fff; border-bottom: 1px solid #dce9ec; display: grid; gap: 12px; padding: 20px 50px 14px 20px; }
-.agency-provider-dialog-body { display: grid; gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px; }
+.agency-provider-dialog-body { background: #fff; display: grid; gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px; }
 .agency-provider-dialog-footer { align-items: center; background: #fff; border-top: 1px solid #dce9ec; margin: 0; padding: 12px 20px; }
 .agency-provider-dialog-title { align-items: flex-start; display: flex; gap: 14px; justify-content: space-between; }
 .agency-provider-dialog-title .ops-section-kicker { margin-bottom: 5px; }
