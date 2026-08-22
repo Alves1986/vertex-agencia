@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { Bell, ChevronDown, HeartPulse, LayoutDashboard, LifeBuoy, ListFilter, Loader2, MessageCircleMore, Plus, SlidersHorizontal, SquareKanban, UsersRound, Workflow, WandSparkles } from "lucide-react";
+import { BadgeDollarSign, Bell, ChevronDown, HeartPulse, LayoutDashboard, LifeBuoy, ListFilter, Loader2, MessageCircleMore, Plus, Search, ShieldCheck, SlidersHorizontal, SquareKanban, UsersRound, Workflow, WandSparkles } from "lucide-react";
 import { getNotificationTarget } from "@/lib/notificationTarget";
 import React, { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -14,7 +14,7 @@ export function VertexBrand() {
 export const navigationGroups = [
   { label: "Visão", links: [{ href: "/", label: "Visão geral", icon: LayoutDashboard }] },
   { label: "Operação", links: [{ href: "/projetos", label: "Projetos", icon: SquareKanban }, { href: "/producao", label: "Produção", icon: Workflow }] },
-  { label: "Inteligência e clientes", links: [{ href: "/agencia", label: "Agência IA", icon: WandSparkles }, { href: "/atendimento", label: "Atendimento", icon: MessageCircleMore }, { href: "/sucesso", label: "Sucesso", icon: HeartPulse }, { href: "/suporte", label: "Suporte", icon: LifeBuoy }] },
+  { label: "Inteligência e clientes", links: [{ href: "/agencia", label: "Agência IA", icon: WandSparkles }, { href: "/inteligencia", label: "Inteligência", icon: Search }, { href: "/atendimento", label: "Atendimento", icon: MessageCircleMore }, { href: "/comercial", label: "Comercial", icon: BadgeDollarSign }, { href: "/sucesso", label: "Sucesso", icon: HeartPulse }, { href: "/governanca", label: "Governança", icon: ShieldCheck }, { href: "/suporte", label: "Suporte", icon: LifeBuoy }] },
 ];
 
 function isActive(pathname: string, href: string) {

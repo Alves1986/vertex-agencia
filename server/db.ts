@@ -3,16 +3,19 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { createHash, randomBytes } from "node:crypto";
 import {
   adCampaigns,
+  assetUsageRights,
   approvalHistoryEmailDeliveries,
   approvalHistoryReportRecipients,
   aiGenerations,
   calendarEvents,
+  capacityPlans,
   carouselSlideApprovalBatches,
   carouselSlides,
   carouselBriefTemplates,
   clientBrandAssetCollections,
   clientBrandAssets,
   clientBrandGuidelines,
+  clientConsents,
   clientNotificationPreferences,
   clientOnboardingProgress,
   creativeApprovals,
@@ -23,21 +26,34 @@ import {
   clientPortalMembers,
   clients,
   contentBriefs,
+  commercialProposals,
+  dataRetentionPolicies,
+  editorialItems,
   executiveReports,
   externalApprovalLinks,
+  financialEntries,
+  integrationHealthLogs,
   InsertUser,
   notifications,
   operators,
   originalAppConnections,
   projectArtifacts,
   projects,
+  marketingResearches,
+  marketingResearchSources,
+  paidMediaPlans,
+  paidMediaSnapshots,
   saasPlans,
   saasSubscriptions,
+  salesActivities,
+  salesLeads,
+  serviceContracts,
   strategyDecisions,
   supportTicketUpdates,
   supportTickets,
   tasks,
   teams,
+  timeEntries,
   trendSignals,
   userDashboardPreferences,
   users,
@@ -1848,6 +1864,137 @@ export async function listStrategyDecisions(userId: number, clientId: number) {
   return db.select().from(strategyDecisions).where(and(eq(strategyDecisions.ownerUserId, userId), eq(strategyDecisions.clientId, clientId))).orderBy(desc(strategyDecisions.updatedAt));
 }
 
+type EditorialStatus = "idea" | "briefing" | "production" | "review" | "approved" | "published" | "archived";
+type EditorialChannel = "instagram" | "facebook" | "tiktok" | "youtube" | "linkedin" | "blog" | "email" | "whatsapp" | "other";
+type PaidMediaPlatform = "meta" | "google" | "tiktok" | "linkedin" | "other";
+type PaidMediaStatus = "draft" | "active" | "paused" | "completed";
+
+async function assertOwnedEditorialOperator(userId: number, operatorId: number | null | undefined) {
+  if (!operatorId) return;
+  const db = await requireDb();
+  const operator = await db.select({ id: operators.id }).from(operators).where(and(eq(operators.id, operatorId), eq(operators.createdByUserId, userId))).limit(1);
+  if (!operator[0]) throw new Error("Responsável não pertence a este espaço de trabalho.");
+}
+
+async function assertOwnedCampaignForClient(userId: number, clientId: number, campaignId: number | null | undefined) {
+  if (!campaignId) return;
+  const db = await requireDb();
+  const campaign = await db.select({ id: adCampaigns.id }).from(adCampaigns).where(and(eq(adCampaigns.id, campaignId), eq(adCampaigns.clientId, clientId), eq(adCampaigns.ownerUserId, userId))).limit(1);
+  if (!campaign[0]) throw new Error("Campanha não encontrada para este cliente.");
+}
+
+export async function listEditorialItems(userId: number, clientId: number, status?: EditorialStatus) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  return db.select({ item: editorialItems, operator: operators }).from(editorialItems).leftJoin(operators, eq(editorialItems.assignedOperatorId, operators.id)).where(and(eq(editorialItems.ownerUserId, userId), eq(editorialItems.clientId, clientId), ...(status ? [eq(editorialItems.status, status)] : []))).orderBy(asc(editorialItems.plannedFor), desc(editorialItems.createdAt));
+}
+
+export async function createEditorialItem(userId: number, input: { clientId: number; projectId?: number | null; campaignId?: number | null; assignedOperatorId?: number | null; title: string; channel: EditorialChannel; format?: string | null; pillar?: string | null; objective?: string | null; brief?: string | null; plannedFor?: Date | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  await assertOwnedEditorialOperator(userId, input.assignedOperatorId);
+  await assertOwnedCampaignForClient(userId, input.clientId, input.campaignId);
+  if (input.projectId) {
+    const project = await db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, input.projectId), eq(projects.clientId, input.clientId), eq(projects.ownerUserId, userId))).limit(1);
+    if (!project[0]) throw new Error("Projeto não encontrado para este cliente.");
+  }
+  const [created] = await db.insert(editorialItems).values({ ...input, ownerUserId: userId, format: input.format?.trim() || null, pillar: input.pillar?.trim() || null, objective: input.objective?.trim() || null, brief: input.brief?.trim() || null }).$returningId();
+  return created.id;
+}
+
+export async function updateEditorialItem(userId: number, input: { clientId: number; itemId: number; status?: EditorialStatus; assignedOperatorId?: number | null; plannedFor?: Date | null; publishedAt?: Date | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  await assertOwnedEditorialOperator(userId, input.assignedOperatorId);
+  const row = await db.select({ id: editorialItems.id }).from(editorialItems).where(and(eq(editorialItems.id, input.itemId), eq(editorialItems.ownerUserId, userId), eq(editorialItems.clientId, input.clientId))).limit(1);
+  if (!row[0]) throw new Error("Item editorial não encontrado para este cliente.");
+  await db.update(editorialItems).set({ ...(input.status !== undefined ? { status: input.status } : {}), ...(input.assignedOperatorId !== undefined ? { assignedOperatorId: input.assignedOperatorId } : {}), ...(input.plannedFor !== undefined ? { plannedFor: input.plannedFor } : {}), ...(input.publishedAt !== undefined ? { publishedAt: input.publishedAt } : {}) }).where(eq(editorialItems.id, input.itemId));
+  return input.itemId;
+}
+
+export async function listPaidMediaPlans(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  return db.select().from(paidMediaPlans).where(and(eq(paidMediaPlans.ownerUserId, userId), eq(paidMediaPlans.clientId, clientId))).orderBy(desc(paidMediaPlans.createdAt));
+}
+
+export async function createPaidMediaPlan(userId: number, input: { clientId: number; campaignId?: number | null; name: string; platform: PaidMediaPlatform; objective: string; targetMetric?: string | null; targetValue?: number | null; plannedBudgetCents: number; startsAt?: Date | null; endsAt?: Date | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  await assertOwnedCampaignForClient(userId, input.clientId, input.campaignId);
+  const [created] = await db.insert(paidMediaPlans).values({ ...input, ownerUserId: userId, targetMetric: input.targetMetric?.trim() || null }).$returningId();
+  return created.id;
+}
+
+export async function updatePaidMediaPlanStatus(userId: number, input: { clientId: number; planId: number; status: PaidMediaStatus }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const result = await db.update(paidMediaPlans).set({ status: input.status }).where(and(eq(paidMediaPlans.id, input.planId), eq(paidMediaPlans.clientId, input.clientId), eq(paidMediaPlans.ownerUserId, userId)));
+  if (!result[0]?.affectedRows) throw new Error("Plano de mídia não encontrado para este cliente.");
+  return input.planId;
+}
+
+export async function listPaidMediaSnapshots(userId: number, clientId: number, mediaPlanId?: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  return db.select().from(paidMediaSnapshots).where(and(eq(paidMediaSnapshots.ownerUserId, userId), eq(paidMediaSnapshots.clientId, clientId), ...(mediaPlanId ? [eq(paidMediaSnapshots.mediaPlanId, mediaPlanId)] : []))).orderBy(desc(paidMediaSnapshots.recordedAt));
+}
+
+export async function createPaidMediaSnapshot(userId: number, input: { clientId: number; mediaPlanId: number; recordedAt: Date; spendCents: number; impressions: number; reach: number; clicks: number; leads: number; conversions: number; conversionValueCents: number; notes?: string | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const plan = await db.select({ id: paidMediaPlans.id }).from(paidMediaPlans).where(and(eq(paidMediaPlans.id, input.mediaPlanId), eq(paidMediaPlans.clientId, input.clientId), eq(paidMediaPlans.ownerUserId, userId))).limit(1);
+  if (!plan[0]) throw new Error("Plano de mídia não encontrado para este cliente.");
+  await db.insert(paidMediaSnapshots).values({ ...input, ownerUserId: userId, notes: input.notes?.trim() || null }).onDuplicateKeyUpdate({ set: { spendCents: input.spendCents, impressions: input.impressions, reach: input.reach, clicks: input.clicks, leads: input.leads, conversions: input.conversions, conversionValueCents: input.conversionValueCents, notes: input.notes?.trim() || null } });
+  return input.mediaPlanId;
+}
+
+export async function getPaidMediaSummary(userId: number, clientId: number) {
+  const [plans, snapshots] = await Promise.all([listPaidMediaPlans(userId, clientId), listPaidMediaSnapshots(userId, clientId)]);
+  const aggregate = snapshots.reduce((total, snapshot) => ({ spendCents: total.spendCents + snapshot.spendCents, impressions: total.impressions + snapshot.impressions, reach: total.reach + snapshot.reach, clicks: total.clicks + snapshot.clicks, leads: total.leads + snapshot.leads, conversions: total.conversions + snapshot.conversions, conversionValueCents: total.conversionValueCents + snapshot.conversionValueCents }), { spendCents: 0, impressions: 0, reach: 0, clicks: 0, leads: 0, conversions: 0, conversionValueCents: 0 });
+  return { plans: { total: plans.length, active: plans.filter(plan => plan.status === "active").length, plannedBudgetCents: plans.reduce((sum, plan) => sum + plan.plannedBudgetCents, 0) }, ...aggregate, ctrPercent: aggregate.impressions ? Number(((aggregate.clicks / aggregate.impressions) * 100).toFixed(2)) : null, cplCents: aggregate.leads ? Math.round(aggregate.spendCents / aggregate.leads) : null, roas: aggregate.spendCents ? Number((aggregate.conversionValueCents / aggregate.spendCents).toFixed(2)) : null };
+}
+
+type MarketingResearchStatus = "draft" | "collecting" | "review" | "accepted" | "archived";
+
+export async function listMarketingResearches(userId: number, clientId: number, status?: MarketingResearchStatus) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  return db.select().from(marketingResearches).where(and(eq(marketingResearches.ownerUserId, userId), eq(marketingResearches.clientId, clientId), ...(status ? [eq(marketingResearches.status, status)] : []))).orderBy(desc(marketingResearches.updatedAt));
+}
+
+export async function createMarketingResearch(userId: number, input: { clientId: number; campaignId?: number | null; title: string; objective: string; question: string; audience?: string | null; market?: string | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  await assertOwnedCampaignForClient(userId, input.clientId, input.campaignId);
+  const [created] = await db.insert(marketingResearches).values({ ...input, ownerUserId: userId, audience: input.audience?.trim() || null, market: input.market?.trim() || null, status: "draft" }).$returningId();
+  return created.id;
+}
+
+export async function updateMarketingResearch(userId: number, input: { clientId: number; researchId: number; status?: MarketingResearchStatus; summary?: string | null; recommendation?: string | null; risks?: string | null }) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  const row = await db.select({ id: marketingResearches.id }).from(marketingResearches).where(and(eq(marketingResearches.id, input.researchId), eq(marketingResearches.clientId, input.clientId), eq(marketingResearches.ownerUserId, userId))).limit(1);
+  if (!row[0]) throw new Error("Dossiê de pesquisa não encontrado para este cliente.");
+  await db.update(marketingResearches).set({ ...(input.status !== undefined ? { status: input.status } : {}), ...(input.summary !== undefined ? { summary: input.summary?.trim() || null } : {}), ...(input.recommendation !== undefined ? { recommendation: input.recommendation?.trim() || null } : {}), ...(input.risks !== undefined ? { risks: input.risks?.trim() || null } : {}) }).where(eq(marketingResearches.id, input.researchId));
+  return input.researchId;
+}
+
+export async function listMarketingResearchSources(userId: number, clientId: number, researchId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const research = await db.select({ id: marketingResearches.id }).from(marketingResearches).where(and(eq(marketingResearches.id, researchId), eq(marketingResearches.clientId, clientId), eq(marketingResearches.ownerUserId, userId))).limit(1);
+  if (!research[0]) throw new Error("Dossiê de pesquisa não encontrado para este cliente.");
+  return db.select().from(marketingResearchSources).where(and(eq(marketingResearchSources.researchId, researchId), eq(marketingResearchSources.clientId, clientId), eq(marketingResearchSources.ownerUserId, userId))).orderBy(desc(marketingResearchSources.capturedAt));
+}
+
+export async function addMarketingResearchSource(userId: number, input: { clientId: number; researchId: number; sourceType: "web" | "social" | "video" | "community" | "report" | "competitor" | "other"; title: string; url: string; publisher?: string | null; excerpt?: string | null; publishedAt?: Date | null }) {
+  const db = await requireDb();
+  await listMarketingResearchSources(userId, input.clientId, input.researchId);
+  const [created] = await db.insert(marketingResearchSources).values({ ...input, ownerUserId: userId, publisher: input.publisher?.trim() || null, excerpt: input.excerpt?.trim() || null }).$returningId();
+  return created.id;
+}
+
 const portalWriterRoles = new Set(["client_admin", "manager", "reviewer"]);
 
 const defaultNotificationEvents = {
@@ -2207,4 +2354,455 @@ export async function exportClientBackupSnapshot(userId: number, clientId: numbe
   const ticketIds = tickets.map(ticket => ticket.id);
   const updates = ticketIds.length ? await db.select({ id: supportTicketUpdates.id, ticketId: supportTicketUpdates.ticketId, message: supportTicketUpdates.message, statusAfter: supportTicketUpdates.statusAfter, createdAt: supportTicketUpdates.createdAt }).from(supportTicketUpdates).where(eq(supportTicketUpdates.ticketId, ticketIds[0])).orderBy(asc(supportTicketUpdates.createdAt)) : [];
   return { format: "vertex-client-backup/v1", exportedAt: new Date().toISOString(), restoreInstructions: "Importe somente em ambiente administrativo VERTEX, valide o cliente de destino, reconcilie IDs relacionados e nunca substitua dados existentes sem um backup prévio. Credenciais de IA e de canais não são exportadas e devem ser reconfiguradas manualmente.", client: { id: client.id, name: client.name, contactEmail: client.contactEmail }, profile: profile[0] ?? null, onboarding, brandGuidelines: guidelines, accessGrants: grants, notificationPreferences: preferences, campaigns, whatsapp: { channels, policy: policy[0] ?? null, subscription: subscription[0] ?? null }, support: { tickets, updates }, executiveReports: reports, externalApprovals: approvals };
+}
+
+type SalesLeadStatus = "new" | "qualified" | "proposal" | "negotiation" | "won" | "lost" | "archived";
+type ProposalStatus = "draft" | "sent" | "viewed" | "accepted" | "rejected" | "expired";
+type ContractStatus = "draft" | "active" | "suspended" | "ended" | "renewal_due";
+type FinancialEntryType = "revenue" | "expense" | "media_spend" | "refund";
+type FinancialEntryStatus = "planned" | "invoiced" | "paid" | "overdue" | "cancelled";
+
+async function assertOwnedOperator(userId: number, operatorId: number | null | undefined) {
+  if (!operatorId) return;
+  const db = await requireDb();
+  const operator = (await db
+    .select({ id: operators.id })
+    .from(operators)
+    .where(and(eq(operators.id, operatorId), eq(operators.createdByUserId, userId)))
+    .limit(1))[0];
+  if (!operator) throw new Error("Responsável inválido para este espaço de trabalho.");
+}
+
+async function getOwnedSalesLead(userId: number, leadId: number) {
+  const db = await requireDb();
+  const lead = (await db
+    .select()
+    .from(salesLeads)
+    .where(and(eq(salesLeads.id, leadId), eq(salesLeads.ownerUserId, userId)))
+    .limit(1))[0];
+  if (!lead) throw new Error("Lead não encontrado neste espaço de trabalho.");
+  return lead;
+}
+
+async function getOwnedServiceContract(userId: number, clientId: number, contractId: number) {
+  const db = await requireDb();
+  const contract = (await db
+    .select()
+    .from(serviceContracts)
+    .where(and(eq(serviceContracts.id, contractId), eq(serviceContracts.clientId, clientId), eq(serviceContracts.ownerUserId, userId)))
+    .limit(1))[0];
+  if (!contract) throw new Error("Contrato não encontrado para este cliente.");
+  return contract;
+}
+
+export async function listSalesLeads(userId: number, status?: SalesLeadStatus) {
+  const db = await requireDb();
+  const conditions = [eq(salesLeads.ownerUserId, userId)];
+  if (status) conditions.push(eq(salesLeads.status, status));
+  return db
+    .select({ lead: salesLeads, responsible: operators, convertedClient: clients })
+    .from(salesLeads)
+    .leftJoin(operators, eq(operators.id, salesLeads.responsibleOperatorId))
+    .leftJoin(clients, eq(clients.id, salesLeads.convertedClientId))
+    .where(and(...conditions))
+    .orderBy(asc(salesLeads.nextActionAt), desc(salesLeads.updatedAt));
+}
+
+export async function createSalesLead(userId: number, input: {
+  companyName: string;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  source?: string | null;
+  responsibleOperatorId?: number | null;
+  score?: number | null;
+  estimatedMonthlyRevenueCents?: number | null;
+  nextActionAt?: Date | null;
+  notes?: string | null;
+}) {
+  const db = await requireDb();
+  await assertOwnedOperator(userId, input.responsibleOperatorId);
+  const [created] = await db
+    .insert(salesLeads)
+    .values({
+      ownerUserId: userId,
+      companyName: input.companyName.trim(),
+      contactName: input.contactName?.trim() || null,
+      contactEmail: input.contactEmail?.trim().toLowerCase() || null,
+      contactPhone: input.contactPhone?.trim() || null,
+      source: input.source?.trim() || null,
+      responsibleOperatorId: input.responsibleOperatorId ?? null,
+      score: input.score == null ? null : Math.max(0, Math.min(100, input.score)),
+      estimatedMonthlyRevenueCents: input.estimatedMonthlyRevenueCents ?? null,
+      nextActionAt: input.nextActionAt ?? null,
+      notes: input.notes?.trim() || null,
+    })
+    .$returningId();
+  return created.id;
+}
+
+export async function updateSalesLead(userId: number, input: {
+  leadId: number;
+  status?: SalesLeadStatus;
+  responsibleOperatorId?: number | null;
+  score?: number | null;
+  estimatedMonthlyRevenueCents?: number | null;
+  nextActionAt?: Date | null;
+  lostReason?: string | null;
+  notes?: string | null;
+}) {
+  const db = await requireDb();
+  await getOwnedSalesLead(userId, input.leadId);
+  await assertOwnedOperator(userId, input.responsibleOperatorId);
+  const values: Partial<typeof salesLeads.$inferInsert> = {};
+  if (input.status) values.status = input.status;
+  if (input.responsibleOperatorId !== undefined) values.responsibleOperatorId = input.responsibleOperatorId;
+  if (input.score !== undefined) values.score = input.score == null ? null : Math.max(0, Math.min(100, input.score));
+  if (input.estimatedMonthlyRevenueCents !== undefined) values.estimatedMonthlyRevenueCents = input.estimatedMonthlyRevenueCents;
+  if (input.nextActionAt !== undefined) values.nextActionAt = input.nextActionAt;
+  if (input.lostReason !== undefined) values.lostReason = input.lostReason?.trim() || null;
+  if (input.notes !== undefined) values.notes = input.notes?.trim() || null;
+  await db.update(salesLeads).set(values).where(and(eq(salesLeads.id, input.leadId), eq(salesLeads.ownerUserId, userId)));
+  return input.leadId;
+}
+
+export async function listSalesActivities(userId: number, leadId: number) {
+  const db = await requireDb();
+  await getOwnedSalesLead(userId, leadId);
+  return db
+    .select({ activity: salesActivities, author: users })
+    .from(salesActivities)
+    .leftJoin(users, eq(users.id, salesActivities.authorUserId))
+    .where(eq(salesActivities.leadId, leadId))
+    .orderBy(desc(salesActivities.occurredAt));
+}
+
+export async function createSalesActivity(userId: number, input: {
+  leadId: number;
+  activityType: "note" | "call" | "email" | "meeting" | "task" | "status_change";
+  description: string;
+  nextActionAt?: Date | null;
+}) {
+  const db = await requireDb();
+  await getOwnedSalesLead(userId, input.leadId);
+  const [created] = await db
+    .insert(salesActivities)
+    .values({ leadId: input.leadId, authorUserId: userId, activityType: input.activityType, description: input.description.trim(), nextActionAt: input.nextActionAt ?? null })
+    .$returningId();
+  if (input.nextActionAt !== undefined) {
+    await db.update(salesLeads).set({ nextActionAt: input.nextActionAt ?? null }).where(eq(salesLeads.id, input.leadId));
+  }
+  return created.id;
+}
+
+export async function listCommercialProposals(userId: number, input?: { leadId?: number; clientId?: number; status?: ProposalStatus }) {
+  const db = await requireDb();
+  if (input?.leadId) await getOwnedSalesLead(userId, input.leadId);
+  if (input?.clientId) await assertOwnedSuccessClient(userId, input.clientId);
+  const conditions = [eq(commercialProposals.ownerUserId, userId)];
+  if (input?.leadId) conditions.push(eq(commercialProposals.leadId, input.leadId));
+  if (input?.clientId) conditions.push(eq(commercialProposals.clientId, input.clientId));
+  if (input?.status) conditions.push(eq(commercialProposals.status, input.status));
+  return db
+    .select({ proposal: commercialProposals, lead: salesLeads, client: clients })
+    .from(commercialProposals)
+    .leftJoin(salesLeads, eq(salesLeads.id, commercialProposals.leadId))
+    .leftJoin(clients, eq(clients.id, commercialProposals.clientId))
+    .where(and(...conditions))
+    .orderBy(desc(commercialProposals.updatedAt));
+}
+
+export async function createCommercialProposal(userId: number, input: {
+  leadId?: number | null;
+  clientId?: number | null;
+  proposalNumber: string;
+  title: string;
+  scope: string;
+  amountCents: number;
+  currency?: string;
+  validUntil?: Date | null;
+}) {
+  const db = await requireDb();
+  if (!input.leadId && !input.clientId) throw new Error("Associe a proposta a um lead ou cliente.");
+  if (input.leadId) await getOwnedSalesLead(userId, input.leadId);
+  if (input.clientId) await assertOwnedSuccessClient(userId, input.clientId);
+  const [created] = await db
+    .insert(commercialProposals)
+    .values({
+      ownerUserId: userId,
+      leadId: input.leadId ?? null,
+      clientId: input.clientId ?? null,
+      proposalNumber: input.proposalNumber.trim(),
+      title: input.title.trim(),
+      scope: input.scope.trim(),
+      amountCents: Math.max(0, input.amountCents),
+      currency: (input.currency || "BRL").toUpperCase().slice(0, 3),
+      validUntil: input.validUntil ?? null,
+    })
+    .$returningId();
+  return created.id;
+}
+
+export async function updateCommercialProposalStatus(userId: number, proposalId: number, status: ProposalStatus) {
+  const db = await requireDb();
+  const proposal = (await db.select({ id: commercialProposals.id }).from(commercialProposals).where(and(eq(commercialProposals.id, proposalId), eq(commercialProposals.ownerUserId, userId))).limit(1))[0];
+  if (!proposal) throw new Error("Proposta não encontrada neste espaço de trabalho.");
+  const now = new Date();
+  await db.update(commercialProposals).set({ status, sentAt: status === "sent" ? now : undefined, decidedAt: ["accepted", "rejected"].includes(status) ? now : undefined }).where(eq(commercialProposals.id, proposalId));
+  return proposalId;
+}
+
+export async function listServiceContracts(userId: number, clientId?: number) {
+  const db = await requireDb();
+  if (clientId) await assertOwnedSuccessClient(userId, clientId);
+  const conditions = [eq(serviceContracts.ownerUserId, userId)];
+  if (clientId) conditions.push(eq(serviceContracts.clientId, clientId));
+  return db
+    .select({ contract: serviceContracts, client: clients, proposal: commercialProposals, lead: salesLeads })
+    .from(serviceContracts)
+    .innerJoin(clients, eq(clients.id, serviceContracts.clientId))
+    .leftJoin(commercialProposals, eq(commercialProposals.id, serviceContracts.proposalId))
+    .leftJoin(salesLeads, eq(salesLeads.id, serviceContracts.leadId))
+    .where(and(...conditions))
+    .orderBy(desc(serviceContracts.updatedAt));
+}
+
+export async function createServiceContract(userId: number, input: {
+  clientId: number;
+  leadId?: number | null;
+  proposalId?: number | null;
+  code: string;
+  title: string;
+  scope: string;
+  billingCycle: "monthly" | "annual" | "project";
+  recurringRevenueCents?: number | null;
+  startsAt?: Date | null;
+  endsAt?: Date | null;
+}) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  if (input.leadId) await getOwnedSalesLead(userId, input.leadId);
+  if (input.proposalId) {
+    const proposal = (await db.select({ id: commercialProposals.id, clientId: commercialProposals.clientId }).from(commercialProposals).where(and(eq(commercialProposals.id, input.proposalId), eq(commercialProposals.ownerUserId, userId))).limit(1))[0];
+    if (!proposal || (proposal.clientId !== null && proposal.clientId !== input.clientId)) throw new Error("A proposta não pode ser vinculada a este cliente.");
+  }
+  if (input.startsAt && input.endsAt && input.endsAt.getTime() < input.startsAt.getTime()) throw new Error("A vigência final deve ser posterior ao início do contrato.");
+  const [created] = await db
+    .insert(serviceContracts)
+    .values({ ...input, ownerUserId: userId, status: "draft", code: input.code.trim(), title: input.title.trim(), scope: input.scope.trim(), recurringRevenueCents: input.recurringRevenueCents ?? null, startsAt: input.startsAt ?? null, endsAt: input.endsAt ?? null })
+    .$returningId();
+  return created.id;
+}
+
+export async function updateServiceContractStatus(userId: number, input: { clientId: number; contractId: number; status: ContractStatus; signedAt?: Date | null }) {
+  const db = await requireDb();
+  await getOwnedServiceContract(userId, input.clientId, input.contractId);
+  await db.update(serviceContracts).set({ status: input.status, signedAt: input.signedAt === undefined ? undefined : input.signedAt }).where(eq(serviceContracts.id, input.contractId));
+  return input.contractId;
+}
+
+export async function listFinancialEntries(userId: number, clientId?: number) {
+  const db = await requireDb();
+  if (clientId) await assertOwnedSuccessClient(userId, clientId);
+  const conditions = [eq(financialEntries.ownerUserId, userId)];
+  if (clientId) conditions.push(eq(financialEntries.clientId, clientId));
+  return db
+    .select({ entry: financialEntries, client: clients, contract: serviceContracts, project: projects })
+    .from(financialEntries)
+    .innerJoin(clients, eq(clients.id, financialEntries.clientId))
+    .leftJoin(serviceContracts, eq(serviceContracts.id, financialEntries.contractId))
+    .leftJoin(projects, eq(projects.id, financialEntries.projectId))
+    .where(and(...conditions))
+    .orderBy(desc(financialEntries.dueAt), desc(financialEntries.updatedAt));
+}
+
+export async function createFinancialEntry(userId: number, input: {
+  clientId: number;
+  contractId?: number | null;
+  projectId?: number | null;
+  entryType: FinancialEntryType;
+  status?: FinancialEntryStatus;
+  category?: string | null;
+  description: string;
+  amountCents: number;
+  currency?: string;
+  dueAt?: Date | null;
+  paidAt?: Date | null;
+}) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, input.clientId);
+  if (input.contractId) await getOwnedServiceContract(userId, input.clientId, input.contractId);
+  if (input.projectId) {
+    const project = (await db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, input.projectId), eq(projects.clientId, input.clientId), eq(projects.ownerUserId, userId))).limit(1))[0];
+    if (!project) throw new Error("Projeto não encontrado para este cliente.");
+  }
+  const [created] = await db
+    .insert(financialEntries)
+    .values({ ...input, ownerUserId: userId, contractId: input.contractId ?? null, projectId: input.projectId ?? null, category: input.category?.trim() || null, description: input.description.trim(), amountCents: Math.max(0, input.amountCents), currency: (input.currency || "BRL").toUpperCase().slice(0, 3), status: input.status ?? "planned", dueAt: input.dueAt ?? null, paidAt: input.paidAt ?? null })
+    .$returningId();
+  return created.id;
+}
+
+export async function getClientProfitability(userId: number, clientId: number) {
+  const db = await requireDb();
+  await assertOwnedSuccessClient(userId, clientId);
+  const [entries, contracts, time] = await Promise.all([
+    db.select().from(financialEntries).where(and(eq(financialEntries.ownerUserId, userId), eq(financialEntries.clientId, clientId), inArray(financialEntries.status, ["invoiced", "paid", "overdue"]))),
+    db.select().from(serviceContracts).where(and(eq(serviceContracts.ownerUserId, userId), eq(serviceContracts.clientId, clientId), eq(serviceContracts.status, "active"))),
+    db.select().from(timeEntries).where(and(eq(timeEntries.ownerUserId, userId), eq(timeEntries.clientId, clientId))),
+  ]);
+  const revenueCents = entries.filter(entry => entry.entryType === "revenue").reduce((sum, entry) => sum + entry.amountCents, 0);
+  const refundCents = entries.filter(entry => entry.entryType === "refund").reduce((sum, entry) => sum + entry.amountCents, 0);
+  const directCostCents = entries.filter(entry => entry.entryType === "expense" || entry.entryType === "media_spend").reduce((sum, entry) => sum + entry.amountCents, 0);
+  const laborCostCents = time.reduce((sum, entry) => sum + (entry.internalCostCents ?? 0), 0);
+  const netRevenueCents = revenueCents - refundCents;
+  const totalCostCents = directCostCents + laborCostCents;
+  const marginCents = netRevenueCents - totalCostCents;
+  const mrrCents = contracts.reduce((sum, contract) => sum + (contract.billingCycle === "monthly" ? contract.recurringRevenueCents ?? 0 : contract.billingCycle === "annual" ? Math.round((contract.recurringRevenueCents ?? 0) / 12) : 0), 0);
+  return { clientId, revenueCents, refundCents, directCostCents, laborCostCents, totalCostCents, marginCents, marginPercent: netRevenueCents > 0 ? Math.round((marginCents / netRevenueCents) * 100) : null, mrrCents, hoursWorked: Math.round(time.reduce((sum, entry) => sum + entry.workedMinutes, 0) / 60 * 10) / 10, overdueEntries: entries.filter(entry => entry.status === "overdue").length };
+}
+
+export async function listAssetUsageRights(userId: number, clientId: number) {
+  const db = await requireOwnedAgencyClient(userId, clientId);
+  return db
+    .select({ right: assetUsageRights, asset: clientBrandAssets })
+    .from(assetUsageRights)
+    .innerJoin(clientBrandAssets, eq(clientBrandAssets.id, assetUsageRights.brandAssetId))
+    .where(and(eq(assetUsageRights.ownerUserId, userId), eq(assetUsageRights.clientId, clientId)))
+    .orderBy(asc(assetUsageRights.expiresAt), desc(assetUsageRights.updatedAt));
+}
+
+export async function upsertAssetUsageRight(userId: number, input: {
+  clientId: number; brandAssetId: number; versionLabel: string; licenseType: "owned" | "licensed" | "stock" | "partner" | "editorial" | "unknown";
+  usageScope?: string | null; sourceUrl?: string | null; status: "active" | "expiring" | "expired" | "restricted"; expiresAt?: Date | null; reviewedAt?: Date | null;
+}) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const asset = await db.select({ id: clientBrandAssets.id }).from(clientBrandAssets).where(and(eq(clientBrandAssets.id, input.brandAssetId), eq(clientBrandAssets.clientId, input.clientId), eq(clientBrandAssets.ownerUserId, userId))).limit(1);
+  if (!asset[0]) throw new Error("Ativo de marca não encontrado para este cliente.");
+  const versionLabel = input.versionLabel.trim() || "Versão atual";
+  const existing = await db.select({ id: assetUsageRights.id }).from(assetUsageRights).where(and(eq(assetUsageRights.brandAssetId, input.brandAssetId), eq(assetUsageRights.versionLabel, versionLabel))).limit(1);
+  const values = { versionLabel, licenseType: input.licenseType, usageScope: input.usageScope?.trim() || null, sourceUrl: input.sourceUrl?.trim() || null, status: input.status, expiresAt: input.expiresAt ?? null, reviewedAt: input.reviewedAt ?? null };
+  if (existing[0]) {
+    await db.update(assetUsageRights).set(values).where(eq(assetUsageRights.id, existing[0].id));
+    return existing[0].id;
+  }
+  const [created] = await db.insert(assetUsageRights).values({ ...values, ownerUserId: userId, clientId: input.clientId, brandAssetId: input.brandAssetId }).$returningId();
+  return created.id;
+}
+
+export async function listCapacityPlans(userId: number) {
+  const db = await requireDb();
+  return db
+    .select({ plan: capacityPlans, operator: operators, team: teams })
+    .from(capacityPlans)
+    .innerJoin(operators, eq(operators.id, capacityPlans.operatorId))
+    .leftJoin(teams, eq(teams.id, capacityPlans.teamId))
+    .where(eq(capacityPlans.ownerUserId, userId))
+    .orderBy(asc(capacityPlans.periodStart), asc(operators.name));
+}
+
+export async function upsertCapacityPlan(userId: number, input: { operatorId: number; teamId?: number | null; periodStart: Date; capacityMinutes: number; bookedMinutes: number; notes?: string | null }) {
+  const db = await requireDb();
+  await assertOwnedOperator(userId, input.operatorId);
+  if (input.teamId) {
+    const team = await db.select({ id: teams.id }).from(teams).where(and(eq(teams.id, input.teamId), eq(teams.createdByUserId, userId))).limit(1);
+    if (!team[0]) throw new Error("Equipe não encontrada neste espaço de trabalho.");
+  }
+  const capacityMinutes = Math.max(0, Math.floor(input.capacityMinutes));
+  const bookedMinutes = Math.max(0, Math.floor(input.bookedMinutes));
+  const existing = await db.select({ id: capacityPlans.id }).from(capacityPlans).where(and(eq(capacityPlans.operatorId, input.operatorId), eq(capacityPlans.periodStart, input.periodStart))).limit(1);
+  const values = { teamId: input.teamId ?? null, capacityMinutes, bookedMinutes, notes: input.notes?.trim() || null };
+  if (existing[0]) {
+    await db.update(capacityPlans).set(values).where(eq(capacityPlans.id, existing[0].id));
+    return existing[0].id;
+  }
+  const [created] = await db.insert(capacityPlans).values({ ...values, ownerUserId: userId, operatorId: input.operatorId, periodStart: input.periodStart }).$returningId();
+  return created.id;
+}
+
+export async function listClientConsents(userId: number, clientId: number) {
+  const db = await requireOwnedAgencyClient(userId, clientId);
+  return db.select().from(clientConsents).where(and(eq(clientConsents.ownerUserId, userId), eq(clientConsents.clientId, clientId))).orderBy(desc(clientConsents.updatedAt));
+}
+
+export async function createClientConsent(userId: number, input: { clientId: number; subjectName?: string | null; subjectEmail?: string | null; consentType: "marketing" | "data_processing" | "whatsapp" | "email" | "terms"; status: "granted" | "revoked" | "pending"; legalBasis?: string | null; evidenceUrl?: string | null }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const now = new Date();
+  const [created] = await db.insert(clientConsents).values({ ...input, ownerUserId: userId, subjectName: input.subjectName?.trim() || null, subjectEmail: input.subjectEmail?.trim().toLowerCase() || null, legalBasis: input.legalBasis?.trim() || null, evidenceUrl: input.evidenceUrl?.trim() || null, grantedAt: input.status === "granted" ? now : null, revokedAt: input.status === "revoked" ? now : null }).$returningId();
+  return created.id;
+}
+
+export async function updateClientConsentStatus(userId: number, input: { clientId: number; consentId: number; status: "granted" | "revoked" | "pending" }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const consent = await db.select({ id: clientConsents.id }).from(clientConsents).where(and(eq(clientConsents.id, input.consentId), eq(clientConsents.ownerUserId, userId), eq(clientConsents.clientId, input.clientId))).limit(1);
+  if (!consent[0]) throw new Error("Registro de consentimento não encontrado para este cliente.");
+  const now = new Date();
+  await db.update(clientConsents).set({ status: input.status, grantedAt: input.status === "granted" ? now : undefined, revokedAt: input.status === "revoked" ? now : undefined }).where(eq(clientConsents.id, input.consentId));
+  return input.consentId;
+}
+
+export async function listDataRetentionPolicies(userId: number, clientId: number) {
+  const db = await requireOwnedAgencyClient(userId, clientId);
+  return db.select().from(dataRetentionPolicies).where(and(eq(dataRetentionPolicies.ownerUserId, userId), eq(dataRetentionPolicies.clientId, clientId))).orderBy(asc(dataRetentionPolicies.dataCategory));
+}
+
+export async function upsertDataRetentionPolicy(userId: number, input: { clientId: number; dataCategory: "contacts" | "conversations" | "creative" | "analytics" | "financial" | "research"; retentionDays: number; status: "active" | "paused"; reviewAt?: Date | null }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const existing = await db.select({ id: dataRetentionPolicies.id }).from(dataRetentionPolicies).where(and(eq(dataRetentionPolicies.ownerUserId, userId), eq(dataRetentionPolicies.clientId, input.clientId), eq(dataRetentionPolicies.dataCategory, input.dataCategory))).limit(1);
+  const values = { retentionDays: Math.max(1, Math.floor(input.retentionDays)), status: input.status, reviewAt: input.reviewAt ?? null };
+  if (existing[0]) {
+    await db.update(dataRetentionPolicies).set(values).where(eq(dataRetentionPolicies.id, existing[0].id));
+    return existing[0].id;
+  }
+  const [created] = await db.insert(dataRetentionPolicies).values({ ...values, ownerUserId: userId, clientId: input.clientId, dataCategory: input.dataCategory }).$returningId();
+  return created.id;
+}
+
+export async function listIntegrationHealthLogs(userId: number, clientId: number) {
+  const db = await requireOwnedAgencyClient(userId, clientId);
+  return db.select().from(integrationHealthLogs).where(and(eq(integrationHealthLogs.ownerUserId, userId), eq(integrationHealthLogs.clientId, clientId))).orderBy(desc(integrationHealthLogs.checkedAt)).limit(60);
+}
+
+export async function recordIntegrationHealth(userId: number, input: { clientId: number; integrationType: "ai" | "whatsapp" | "email" | "media" | "research" | "crm" | "other"; provider: string; status: "healthy" | "warning" | "error" | "unknown"; safeMessage?: string | null }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const [created] = await db.insert(integrationHealthLogs).values({ ownerUserId: userId, clientId: input.clientId, integrationType: input.integrationType, provider: input.provider.trim(), status: input.status, safeMessage: input.safeMessage?.trim().replace(/(?:api[_ -]?key|token|secret|password)\s*[:=]\s*[^\s]+/gi, "[redigido]") || null }).$returningId();
+  return created.id;
+}
+
+export async function getExecutiveDashboard(userId: number) {
+  const db = await requireDb();
+  const [contracts, entries, leads, snapshots, capacities, allClients] = await Promise.all([
+    db.select().from(serviceContracts).where(eq(serviceContracts.ownerUserId, userId)),
+    db.select().from(financialEntries).where(eq(financialEntries.ownerUserId, userId)),
+    db.select().from(salesLeads).where(eq(salesLeads.ownerUserId, userId)),
+    db.select().from(paidMediaSnapshots).where(eq(paidMediaSnapshots.ownerUserId, userId)),
+    db.select().from(capacityPlans).where(eq(capacityPlans.ownerUserId, userId)),
+    db.select().from(clients).where(eq(clients.createdByUserId, userId)),
+  ]);
+  const revenueCents = entries.filter(entry => entry.entryType === "revenue" && ["invoiced", "paid", "overdue"].includes(entry.status)).reduce((sum, entry) => sum + entry.amountCents, 0);
+  const refundCents = entries.filter(entry => entry.entryType === "refund" && ["invoiced", "paid", "overdue"].includes(entry.status)).reduce((sum, entry) => sum + entry.amountCents, 0);
+  const directCostCents = entries.filter(entry => (entry.entryType === "expense" || entry.entryType === "media_spend") && ["invoiced", "paid", "overdue"].includes(entry.status)).reduce((sum, entry) => sum + entry.amountCents, 0);
+  const activeContracts = contracts.filter(contract => contract.status === "active");
+  const endedContracts = contracts.filter(contract => contract.status === "ended");
+  const mrrCents = activeContracts.reduce((sum, contract) => sum + (contract.billingCycle === "monthly" ? contract.recurringRevenueCents ?? 0 : contract.billingCycle === "annual" ? Math.round((contract.recurringRevenueCents ?? 0) / 12) : 0), 0);
+  const netRevenueCents = revenueCents - refundCents;
+  const plannedMinutes = capacities.reduce((sum, plan) => sum + plan.capacityMinutes, 0);
+  const bookedMinutes = capacities.reduce((sum, plan) => sum + plan.bookedMinutes, 0);
+  const decidedLeads = leads.filter(lead => lead.status === "won" || lead.status === "lost");
+  return {
+    clients: allClients.length,
+    mrrCents,
+    revenueCents: netRevenueCents,
+    directCostCents,
+    marginCents: netRevenueCents - directCostCents,
+    marginPercent: netRevenueCents > 0 ? Math.round(((netRevenueCents - directCostCents) / netRevenueCents) * 100) : null,
+    churnRatePercent: activeContracts.length + endedContracts.length > 0 ? Math.round((endedContracts.length / (activeContracts.length + endedContracts.length)) * 1000) / 10 : null,
+    cacCents: null as number | null,
+    ltvCents: null as number | null,
+    pipelineCents: leads.filter(lead => !["won", "lost", "archived"].includes(lead.status)).reduce((sum, lead) => sum + (lead.estimatedMonthlyRevenueCents ?? 0), 0),
+    winRatePercent: decidedLeads.length ? Math.round((leads.filter(lead => lead.status === "won").length / decidedLeads.length) * 1000) / 10 : null,
+    media: { spendCents: snapshots.reduce((sum, item) => sum + item.spendCents, 0), leads: snapshots.reduce((sum, item) => sum + item.leads, 0), conversions: snapshots.reduce((sum, item) => sum + item.conversions, 0), conversionValueCents: snapshots.reduce((sum, item) => sum + item.conversionValueCents, 0) },
+    capacity: { plannedMinutes, bookedMinutes, utilizationPercent: plannedMinutes ? Math.round((bookedMinutes / plannedMinutes) * 100) : null },
+    metricAvailability: { cac: false, ltv: false, note: "CAC e LTV permanecem indisponíveis até que custos de aquisição e histórico de retenção sejam registrados de forma consistente." },
+  };
 }

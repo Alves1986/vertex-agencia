@@ -134,6 +134,13 @@
       "when": 1787401870011,
       "tag": "0018_striped_hemingway",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1787405262200,
+      "tag": "0019_awesome_sunfire",
+      "breakpoints": true
     }
   ]
 }

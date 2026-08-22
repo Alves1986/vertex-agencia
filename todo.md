@@ -228,3 +228,14 @@
 - [x] Implementar relatórios executivos exclusivamente sob demanda nesta versão, preservando a futura extensão para automação mensal.
 - [x] Implementar exportação administrativa dos dados do cliente e um fluxo documentado de backup e restauração.
 - [x] Cobrir os novos módulos com testes integrados, validação visual responsiva e documentação de lançamento.
+- [x] Avaliar o Agent-Reach e documentar uma arquitetura segura de pesquisa profunda sob demanda, sem executar automações recorrentes nem expor credenciais.
+- [x] Modelar CRM comercial, oportunidades, propostas, contratos, renovação e histórico de relacionamento por cliente.
+- [x] Implementar orçamento, receita recorrente, custos, horas, margem e visão de rentabilidade por cliente e projeto.
+- [x] Criar planejamento editorial com pautas, calendário, pilares, formatos, responsáveis, status e revisão por canal.
+- [x] Implementar gestão de mídia paga com metas, orçamento, resultados importados manualmente, alertas e comparação de desempenho.
+- [x] Integrar uma central de inteligência de marketing sob demanda, com pesquisa, fontes, síntese revisável e vínculo aos briefings.
+- [x] Ampliar a gestão de ativos com versões, tags, licença, validade, direitos de uso e kits de marca.
+- [x] Implementar capacidade da equipe com horas, carga, previsão de entrega, SLA e indicadores de gargalo.
+- [x] Adicionar governança empresarial, incluindo consentimento, retenção, auditoria, monitoramento de integrações e política de recuperação.
+- [x] Criar BI executivo multicliente com receita, MRR, churn, margem, CAC, LTV e resultado de mídia, sem inventar métricas ausentes.
+- [x] Cobrir os módulos comerciais e de inteligência com testes, validação visual responsiva e documentação operacional.

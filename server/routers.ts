@@ -8,6 +8,9 @@ import { productionRouter } from "./routers/production";
 import { projectsRouter } from "./routers/projects";
 import { workspaceRouter } from "./routers/workspace";
 import { agencyRouter } from "./routers/agency";
+import { commercialRouter } from "./routers/commercial";
+import { intelligenceRouter } from "./routers/intelligence";
+import { governanceRouter } from "./routers/governance";
 import { successRouter } from "./routers/success";
 import { whatsappRouter } from "./routers/whatsapp";
 
@@ -27,6 +30,9 @@ export const appRouter = router({
   notifications: notificationsRouter,
   originalApp: originalAppRouter,
   agency: agencyRouter,
+  commercial: commercialRouter,
+  intelligence: intelligenceRouter,
+  governance: governanceRouter,
   success: successRouter,
   whatsapp: whatsappRouter,
 });

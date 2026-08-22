@@ -14,6 +14,9 @@ import WhatsApp from "./pages/WhatsApp";
 import Success from "./pages/Success";
 import Support from "./pages/Support";
 import PublicApproval from "./pages/PublicApproval";
+import Commercial from "./pages/Commercial";
+import Intelligence from "./pages/Intelligence";
+import Governance from "./pages/Governance";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -26,6 +29,9 @@ function Router() {
       <Route path="/atendimento" component={WhatsApp} />
       <Route path="/sucesso" component={Success} />
       <Route path="/suporte" component={Support} />
+      <Route path="/comercial" component={Commercial} />
+      <Route path="/inteligencia" component={Intelligence} />
+      <Route path="/governanca" component={Governance} />
       <Route path="/meu-atendimento" component={ClientPortal} />
       <Route path="/aprovar/:token" component={PublicApproval} />
       <Route path="/404" component={NotFound} />

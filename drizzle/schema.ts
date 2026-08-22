@@ -1017,6 +1017,386 @@ export const approvalHistoryReportRecipients = mysqlTable(
   ],
 );
 
+/** Pipeline comercial independente do cliente: um lead pode ser convertido em cliente após o ganho. */
+export const salesLeads = mysqlTable(
+  "sales_leads",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    convertedClientId: int("convertedClientId").references(() => clients.id, { onDelete: "set null" }),
+    responsibleOperatorId: int("responsibleOperatorId").references(() => operators.id, { onDelete: "set null" }),
+    companyName: varchar("companyName", { length: 220 }).notNull(),
+    contactName: varchar("contactName", { length: 180 }),
+    contactEmail: varchar("contactEmail", { length: 320 }),
+    contactPhone: varchar("contactPhone", { length: 40 }),
+    source: varchar("source", { length: 120 }),
+    status: mysqlEnum("status", ["new", "qualified", "proposal", "negotiation", "won", "lost", "archived"]).default("new").notNull(),
+    score: int("score"),
+    estimatedMonthlyRevenueCents: int("estimatedMonthlyRevenueCents"),
+    nextActionAt: timestamp("nextActionAt"),
+    lostReason: varchar("lostReason", { length: 500 }),
+    notes: text("notes"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("sales_leads_owner_status_idx").on(table.ownerUserId, table.status),
+    index("sales_leads_owner_action_idx").on(table.ownerUserId, table.nextActionAt),
+    index("sales_leads_operator_idx").on(table.responsibleOperatorId),
+  ],
+);
+
+export const salesActivities = mysqlTable(
+  "sales_activities",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    leadId: int("leadId").notNull().references(() => salesLeads.id, { onDelete: "cascade" }),
+    authorUserId: int("authorUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    activityType: mysqlEnum("activityType", ["note", "call", "email", "meeting", "task", "status_change"]).notNull(),
+    description: text("description").notNull(),
+    occurredAt: timestamp("occurredAt").defaultNow().notNull(),
+    nextActionAt: timestamp("nextActionAt"),
+  },
+  table => [index("sales_activities_lead_occurred_idx").on(table.leadId, table.occurredAt)],
+);
+
+export const commercialProposals = mysqlTable(
+  "commercial_proposals",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    leadId: int("leadId").references(() => salesLeads.id, { onDelete: "set null" }),
+    clientId: int("clientId").references(() => clients.id, { onDelete: "set null" }),
+    proposalNumber: varchar("proposalNumber", { length: 80 }).notNull(),
+    title: varchar("title", { length: 220 }).notNull(),
+    scope: text("scope").notNull(),
+    amountCents: int("amountCents").notNull(),
+    currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
+    status: mysqlEnum("status", ["draft", "sent", "viewed", "accepted", "rejected", "expired"]).default("draft").notNull(),
+    validUntil: timestamp("validUntil"),
+    sentAt: timestamp("sentAt"),
+    decidedAt: timestamp("decidedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("commercial_proposals_owner_number_unique").on(table.ownerUserId, table.proposalNumber),
+    index("commercial_proposals_owner_status_idx").on(table.ownerUserId, table.status),
+    index("commercial_proposals_lead_idx").on(table.leadId),
+    index("commercial_proposals_client_idx").on(table.clientId),
+  ],
+);
+
+export const serviceContracts = mysqlTable(
+  "service_contracts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    leadId: int("leadId").references(() => salesLeads.id, { onDelete: "set null" }),
+    proposalId: int("proposalId").references(() => commercialProposals.id, { onDelete: "set null" }),
+    code: varchar("code", { length: 80 }).notNull(),
+    title: varchar("title", { length: 220 }).notNull(),
+    scope: text("scope").notNull(),
+    status: mysqlEnum("status", ["draft", "active", "suspended", "ended", "renewal_due"]).default("draft").notNull(),
+    billingCycle: mysqlEnum("billingCycle", ["monthly", "annual", "project"]).default("monthly").notNull(),
+    recurringRevenueCents: int("recurringRevenueCents"),
+    startsAt: timestamp("startsAt"),
+    endsAt: timestamp("endsAt"),
+    signedAt: timestamp("signedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("service_contracts_owner_code_unique").on(table.ownerUserId, table.code),
+    index("service_contracts_client_status_idx").on(table.clientId, table.status),
+    index("service_contracts_ends_idx").on(table.endsAt),
+  ],
+);
+
+/** Lançamentos financeiros internos; valores de mídia podem ser discriminados sem expor margem ao portal. */
+export const financialEntries = mysqlTable(
+  "financial_entries",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    contractId: int("contractId").references(() => serviceContracts.id, { onDelete: "set null" }),
+    projectId: int("projectId").references(() => projects.id, { onDelete: "set null" }),
+    entryType: mysqlEnum("entryType", ["revenue", "expense", "media_spend", "refund"]).notNull(),
+    status: mysqlEnum("status", ["planned", "invoiced", "paid", "overdue", "cancelled"]).default("planned").notNull(),
+    category: varchar("category", { length: 120 }),
+    description: varchar("description", { length: 320 }).notNull(),
+    amountCents: int("amountCents").notNull(),
+    currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
+    dueAt: timestamp("dueAt"),
+    paidAt: timestamp("paidAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("financial_entries_client_status_idx").on(table.clientId, table.status),
+    index("financial_entries_owner_paid_idx").on(table.ownerUserId, table.paidAt),
+    index("financial_entries_due_idx").on(table.dueAt),
+  ],
+);
+
+export const timeEntries = mysqlTable(
+  "time_entries",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    projectId: int("projectId").references(() => projects.id, { onDelete: "set null" }),
+    taskId: int("taskId").references(() => tasks.id, { onDelete: "set null" }),
+    operatorId: int("operatorId").references(() => operators.id, { onDelete: "set null" }),
+    workedMinutes: int("workedMinutes").notNull(),
+    billable: int("billable").default(1).notNull(),
+    internalCostCents: int("internalCostCents"),
+    note: varchar("note", { length: 800 }),
+    occurredAt: timestamp("occurredAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("time_entries_client_occurred_idx").on(table.clientId, table.occurredAt),
+    index("time_entries_operator_occurred_idx").on(table.operatorId, table.occurredAt),
+    index("time_entries_project_idx").on(table.projectId),
+  ],
+);
+
+/** Calendário editorial separado das tarefas para preservar ciclo, canal e aprovação de conteúdo. */
+export const editorialItems = mysqlTable(
+  "editorial_items",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    projectId: int("projectId").references(() => projects.id, { onDelete: "set null" }),
+    campaignId: int("campaignId").references(() => adCampaigns.id, { onDelete: "set null" }),
+    assignedOperatorId: int("assignedOperatorId").references(() => operators.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 240 }).notNull(),
+    channel: mysqlEnum("channel", ["instagram", "facebook", "tiktok", "youtube", "linkedin", "blog", "email", "whatsapp", "other"]).default("instagram").notNull(),
+    format: varchar("format", { length: 120 }),
+    pillar: varchar("pillar", { length: 160 }),
+    objective: varchar("objective", { length: 220 }),
+    brief: text("brief"),
+    status: mysqlEnum("status", ["idea", "briefing", "production", "review", "approved", "published", "archived"]).default("idea").notNull(),
+    plannedFor: timestamp("plannedFor"),
+    publishedAt: timestamp("publishedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("editorial_items_client_plan_idx").on(table.clientId, table.plannedFor),
+    index("editorial_items_client_status_idx").on(table.clientId, table.status),
+    index("editorial_items_operator_idx").on(table.assignedOperatorId),
+  ],
+);
+
+export const paidMediaPlans = mysqlTable(
+  "paid_media_plans",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    campaignId: int("campaignId").references(() => adCampaigns.id, { onDelete: "set null" }),
+    name: varchar("name", { length: 220 }).notNull(),
+    platform: mysqlEnum("platform", ["meta", "google", "tiktok", "linkedin", "other"]).notNull(),
+    objective: varchar("objective", { length: 180 }).notNull(),
+    targetMetric: varchar("targetMetric", { length: 100 }),
+    targetValue: int("targetValue"),
+    plannedBudgetCents: int("plannedBudgetCents").notNull(),
+    status: mysqlEnum("status", ["draft", "active", "paused", "completed"]).default("draft").notNull(),
+    startsAt: timestamp("startsAt"),
+    endsAt: timestamp("endsAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("paid_media_plans_client_status_idx").on(table.clientId, table.status),
+    index("paid_media_plans_client_period_idx").on(table.clientId, table.startsAt, table.endsAt),
+  ],
+);
+
+export const paidMediaSnapshots = mysqlTable(
+  "paid_media_snapshots",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    mediaPlanId: int("mediaPlanId").notNull(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    recordedAt: timestamp("recordedAt").notNull(),
+    spendCents: int("spendCents").default(0).notNull(),
+    impressions: int("impressions").default(0).notNull(),
+    reach: int("reach").default(0).notNull(),
+    clicks: int("clicks").default(0).notNull(),
+    leads: int("leads").default(0).notNull(),
+    conversions: int("conversions").default(0).notNull(),
+    conversionValueCents: int("conversionValueCents").default(0).notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    foreignKey({ columns: [table.mediaPlanId], foreignColumns: [paidMediaPlans.id], name: "media_snapshot_plan_fk" }).onDelete("cascade"),
+    uniqueIndex("paid_media_snapshots_plan_date_unique").on(table.mediaPlanId, table.recordedAt),
+    index("paid_media_snapshots_client_date_idx").on(table.clientId, table.recordedAt),
+  ],
+);
+
+/** Registro pesquisável e revisável; a coleta externa permanece sob comando humano. */
+export const marketingResearches = mysqlTable(
+  "marketing_researches",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    campaignId: int("campaignId").references(() => adCampaigns.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 240 }).notNull(),
+    objective: varchar("objective", { length: 240 }).notNull(),
+    question: text("question").notNull(),
+    audience: varchar("audience", { length: 240 }),
+    market: varchar("market", { length: 240 }),
+    status: mysqlEnum("status", ["draft", "collecting", "review", "accepted", "archived"]).default("draft").notNull(),
+    summary: text("summary"),
+    recommendation: text("recommendation"),
+    risks: text("risks"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("marketing_researches_client_status_idx").on(table.clientId, table.status),
+    index("marketing_researches_campaign_idx").on(table.campaignId),
+  ],
+);
+
+export const marketingResearchSources = mysqlTable(
+  "marketing_research_sources",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    researchId: int("researchId").notNull(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    sourceType: mysqlEnum("sourceType", ["web", "social", "video", "community", "report", "competitor", "other"]).default("web").notNull(),
+    title: varchar("title", { length: 300 }).notNull(),
+    url: varchar("url", { length: 1400 }).notNull(),
+    publisher: varchar("publisher", { length: 220 }),
+    excerpt: text("excerpt"),
+    publishedAt: timestamp("publishedAt"),
+    capturedAt: timestamp("capturedAt").defaultNow().notNull(),
+  },
+  table => [
+    foreignKey({ columns: [table.researchId], foreignColumns: [marketingResearches.id], name: "research_source_research_fk" }).onDelete("cascade"),
+    index("marketing_research_sources_research_idx").on(table.researchId),
+    index("marketing_research_sources_client_idx").on(table.clientId),
+  ],
+);
+
+export const assetUsageRights = mysqlTable(
+  "asset_usage_rights",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    brandAssetId: int("brandAssetId").notNull(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    versionLabel: varchar("versionLabel", { length: 160 }),
+    licenseType: mysqlEnum("licenseType", ["owned", "licensed", "stock", "partner", "editorial", "unknown"]).default("unknown").notNull(),
+    usageScope: text("usageScope"),
+    sourceUrl: varchar("sourceUrl", { length: 1400 }),
+    status: mysqlEnum("status", ["active", "expiring", "expired", "restricted"]).default("active").notNull(),
+    expiresAt: timestamp("expiresAt"),
+    reviewedAt: timestamp("reviewedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    foreignKey({ columns: [table.brandAssetId], foreignColumns: [clientBrandAssets.id], name: "asset_right_brand_asset_fk" }).onDelete("cascade"),
+    uniqueIndex("asset_usage_rights_asset_version_unique").on(table.brandAssetId, table.versionLabel),
+    index("asset_usage_rights_client_status_idx").on(table.clientId, table.status),
+    index("asset_usage_rights_expiry_idx").on(table.expiresAt),
+  ],
+);
+
+export const capacityPlans = mysqlTable(
+  "capacity_plans",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    teamId: int("teamId").references(() => teams.id, { onDelete: "set null" }),
+    operatorId: int("operatorId").notNull().references(() => operators.id, { onDelete: "cascade" }),
+    periodStart: timestamp("periodStart").notNull(),
+    capacityMinutes: int("capacityMinutes").notNull(),
+    bookedMinutes: int("bookedMinutes").default(0).notNull(),
+    notes: varchar("notes", { length: 600 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("capacity_plans_operator_period_unique").on(table.operatorId, table.periodStart),
+    index("capacity_plans_owner_period_idx").on(table.ownerUserId, table.periodStart),
+  ],
+);
+
+export const clientConsents = mysqlTable(
+  "client_consents",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    subjectName: varchar("subjectName", { length: 180 }),
+    subjectEmail: varchar("subjectEmail", { length: 320 }),
+    consentType: mysqlEnum("consentType", ["marketing", "data_processing", "whatsapp", "email", "terms"]).notNull(),
+    status: mysqlEnum("status", ["granted", "revoked", "pending"]).default("pending").notNull(),
+    legalBasis: varchar("legalBasis", { length: 180 }),
+    evidenceUrl: varchar("evidenceUrl", { length: 1400 }),
+    grantedAt: timestamp("grantedAt"),
+    revokedAt: timestamp("revokedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("client_consents_client_type_idx").on(table.clientId, table.consentType, table.status),
+    index("client_consents_subject_idx").on(table.subjectEmail),
+  ],
+);
+
+export const dataRetentionPolicies = mysqlTable(
+  "data_retention_policies",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").references(() => clients.id, { onDelete: "cascade" }),
+    dataCategory: mysqlEnum("dataCategory", ["contacts", "conversations", "creative", "analytics", "financial", "research"]).notNull(),
+    retentionDays: int("retentionDays").notNull(),
+    status: mysqlEnum("status", ["active", "paused"]).default("active").notNull(),
+    reviewAt: timestamp("reviewAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("data_retention_owner_client_category_unique").on(table.ownerUserId, table.clientId, table.dataCategory),
+    index("data_retention_review_idx").on(table.reviewAt),
+  ],
+);
+
+/** Diagnóstico sanitizado de integrações; nunca armazena payloads, tokens ou mensagens brutas de erro. */
+export const integrationHealthLogs = mysqlTable(
+  "integration_health_logs",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: int("clientId").references(() => clients.id, { onDelete: "cascade" }),
+    integrationType: mysqlEnum("integrationType", ["ai", "whatsapp", "email", "media", "research", "crm", "other"]).notNull(),
+    provider: varchar("provider", { length: 140 }).notNull(),
+    status: mysqlEnum("status", ["healthy", "warning", "error", "unknown"]).default("unknown").notNull(),
+    safeMessage: varchar("safeMessage", { length: 800 }),
+    checkedAt: timestamp("checkedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("integration_health_owner_client_checked_idx").on(table.ownerUserId, table.clientId, table.checkedAt),
+    index("integration_health_status_idx").on(table.status),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Client = typeof clients.$inferSelect;
