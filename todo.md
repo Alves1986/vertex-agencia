@@ -251,3 +251,5 @@
 - [x] Adicionar NVIDIA NIM como provedor de IA com validação segura de chave e documentação contextual oficial.
 - [x] Adicionar seleção de modelo de resposta por provedor, com presets recomendados e opção de identificador personalizado.
 - [x] Cobrir NVIDIA e a seleção de modelos com testes, build e validação responsiva do card.
+- [x] Criar uma visualização simples dos presets NVIDIA com seleção direta no card do motor de IA.
+- [x] Validar em testes e responsividade a nova seleção visual de presets NVIDIA.

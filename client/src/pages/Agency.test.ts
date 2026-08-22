@@ -171,4 +171,34 @@ describe("modos da Agência IA", () => {
     expect(html).toContain("agency-provider-dialog-body");
     expect(html).toMatch(/<button class="ops-primary-button" type="submit">.*Proteger conexão/);
   });
+
+  it("apresenta os presets NVIDIA como cartões selecionáveis e mantém a alternativa personalizada", () => {
+    const html = renderToStaticMarkup(createElement(ProviderConnectionDialog, {
+      open: true,
+      onOpenChange: () => undefined,
+      onSubmit: event => event.preventDefault(),
+      onCancel: () => undefined,
+      provider: { label: "NVIDIA · Conteúdo", provider: "nvidia", model: "meta/llama-3.3-70b-instruct", imageModel: "", baseUrl: "", apiKey: "" },
+      setProvider: () => undefined,
+      editing: false,
+      selectedProvider: providerCatalog.find(item => item.value === "nvidia")!,
+      saving: false,
+      testing: false,
+      testState: "idle",
+      testError: null,
+      testIsCurrent: false,
+      requiresTest: true,
+      requiresNewKey: false,
+      onConfigurationChange: () => undefined,
+      onTest: () => undefined,
+    }));
+
+    expect(html).toContain("Modelos NVIDIA NIM");
+    expect(html).toContain("Llama 3.3 70B Instruct");
+    expect(html).toContain("NVIDIA Nemotron 70B");
+    expect(html).toContain("Qwen3 235B");
+    expect(html).toContain("Informar outro modelo");
+    expect(html).toContain('class="agency-nvidia-preset-grid"');
+    expect(html).toContain('aria-checked="true"');
+  });
 });
