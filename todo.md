@@ -211,3 +211,9 @@
 - [x] Permitir selecionar destinatários autorizados adicionais na confirmação de envio do relatório, mantendo o contato principal obrigatório e somente leitura.
 - [x] Exibir alertas visuais de falha de e-mail com campanha, data, destinatários e mensagem segura de erro, sem expor conteúdo ou segredos.
 - [x] Cobrir destinatários adicionais, alertas de falha, autorização e interface com testes e documentação operacional.
+- [x] Gerar uma versão transparente da logo VERTEX Consulting preservando o desenho e as cores originais.
+- [x] Aplicar a logo sem fundo na navegação e validar sua visualização responsiva.
+- [x] Reposicionar o botão de abrir e fechar o menu lateral para que não sobreponha a logo VERTEX Consulting.
+- [x] Remover a navegação lateral recolhível e restaurar abas de topo profissionais para as áreas principais do sistema.
+- [x] Preservar rotas, estados ativos, identidade VERTEX e adaptação móvel na navegação superior.
+- [x] Cobrir e validar a navegação superior em teste, desktop e celular antes da entrega.

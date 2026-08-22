@@ -1,11 +1,11 @@
 import { trpc } from "@/lib/trpc";
-import { Bell, ChevronDown, LayoutDashboard, ListFilter, Loader2, Menu, MessageCircleMore, Plus, SlidersHorizontal, Sparkles, SquareKanban, UsersRound, Workflow, WandSparkles, X } from "lucide-react";
+import { Bell, ChevronDown, LayoutDashboard, ListFilter, Loader2, MessageCircleMore, Plus, SlidersHorizontal, SquareKanban, UsersRound, Workflow, WandSparkles } from "lucide-react";
 import { getNotificationTarget } from "@/lib/notificationTarget";
 import React, { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import "./studio-shell.css";
 
-export const vertexLogo = "/manus-storage/vertex-consulting-logo_4cdb7d6a.png";
+export const vertexLogo = "/manus-storage/vertex-consulting-logo-transparent_6996f748.png";
 
 export function VertexBrand() {
   return <><img src={vertexLogo} alt="Logo VERTEX" /><span><b>VERTEX</b><small>Consulting</small></span></>;
@@ -17,8 +17,6 @@ export const navigationGroups = [
   { label: "Inteligência e clientes", links: [{ href: "/agencia", label: "Agência IA", icon: WandSparkles }, { href: "/atendimento", label: "Atendimento", icon: MessageCircleMore }] },
 ];
 
-const links = navigationGroups.flatMap(group => group.links);
-
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
@@ -27,7 +25,6 @@ export function StudioShell({ title, eyebrow, actions, children }: { title: stri
   const [location, setLocation] = useLocation();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const utils = trpc.useUtils();
   const clients = trpc.workspace.clients.useQuery();
   const teams = trpc.workspace.teams.useQuery();
@@ -47,32 +44,14 @@ export function StudioShell({ title, eyebrow, actions, children }: { title: stri
   const activeClient = preferences.data?.activeClientId ?? null;
   const activeTeam = preferences.data?.activeTeamId ?? null;
   return (
-    <div className={sidebarOpen ? "ops-app is-sidebar-open" : "ops-app"}>
-      <button type="button" className="ops-sidebar-toggle" aria-label={sidebarOpen ? "Fechar menu" : "Abrir menu"} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(open => !open)}>{sidebarOpen ? <X size={18} /> : <Menu size={18} />}</button>
-      <aside className={sidebarOpen ? "ops-sidebar is-open" : "ops-sidebar"} aria-label="Navegação principal">
-        <Link href="/" className="ops-brand ops-brand-vertex" aria-label="VERTEX Consulting — Centro de comando">
-          <VertexBrand />
-        </Link>
-        <div className="ops-sidebar-caption">Centro de comando</div>
-        <nav className="ops-nav">
-          {navigationGroups.map(group => <div className="ops-nav-group" key={group.label}><p>{group.label}</p>{group.links.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} onClick={() => setSidebarOpen(false)} className={isActive(location, href) ? "ops-nav-link is-active" : "ops-nav-link"}>
-              <Icon size={18} /> <span>{label}</span>
-            </Link>
-          ))}</div>)}
-        </nav>
-        <div className="ops-sidebar-bottom">
-          <div className="ops-signal"><Sparkles size={15} /><span>Dados reais, ritmo real.</span></div>
-          <p>Filtros e alertas acompanham suas decisões entre telas.</p>
-        </div>
-      </aside>
-
+    <div className="ops-app">
       <main className="ops-main">
         <header className="ops-header">
           <div className="ops-header-title">
-            <Link href="/" className="ops-mobile-brand" aria-label="VERTEX Consulting — Centro de comando">
-              <img src={vertexLogo} alt="Logo VERTEX" />
+            <Link href="/" className="ops-top-brand" aria-label="VERTEX Consulting — Centro de comando">
+              <VertexBrand />
             </Link>
+            <span className="ops-header-divider" aria-hidden="true" />
             <div>
               <p className="ops-eyebrow"><i /> {eyebrow}</p>
               <h1>{title}</h1>
@@ -125,9 +104,12 @@ export function StudioShell({ title, eyebrow, actions, children }: { title: stri
             {actions}
           </div>
         </header>
-        <div className="ops-mobile-nav" aria-label="Navegação móvel">
-          {links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={isActive(location, href) ? "is-active" : ""}><Icon size={16} />{label}</Link>)}
-        </div>
+        <nav className="ops-top-tabs" aria-label="Navegação principal">
+          {navigationGroups.map((group, groupIndex) => <React.Fragment key={group.label}>
+            {groupIndex ? <span className="ops-top-tabs-divider" aria-hidden="true" /> : null}
+            {group.links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} title={`${group.label}: ${label}`} className={isActive(location, href) ? "ops-top-tab is-active" : "ops-top-tab"}><Icon size={16} /><span>{label}</span></Link>)}
+          </React.Fragment>)}
+        </nav>
         {children}
       </main>
     </div>

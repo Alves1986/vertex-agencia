@@ -14,7 +14,7 @@ describe("configuração pública de marca", () => {
       expect(response.ok).toBe(true);
       await expect(response.json()).resolves.toEqual({
         title: "VERTEX Consulting",
-        logo: "/manus-storage/vertex-consulting-logo_4cdb7d6a.png",
+        logo: "/manus-storage/vertex-consulting-logo-transparent_6996f748.png",
       });
     } finally {
       server.close();

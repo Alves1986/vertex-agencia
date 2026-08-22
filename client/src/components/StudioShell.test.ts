@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { TeamFilterOptions, VertexBrand, vertexLogo } from "./StudioShell";
 
 describe("TeamFilterOptions", () => {
@@ -22,5 +23,15 @@ describe("VertexBrand", () => {
     expect(markup).toContain("Consulting");
     expect(markup).toContain('alt="Logo VERTEX"');
     expect(markup).toContain(vertexLogo);
+  });
+});
+
+describe("navegação superior", () => {
+  it("mantém abas de topo e não reintroduz o menu lateral recolhível", () => {
+    const shell = readFileSync(new URL("./StudioShell.tsx", import.meta.url), "utf8");
+
+    expect(shell).toContain('className="ops-top-tabs"');
+    expect(shell).not.toContain("ops-sidebar-toggle");
+    expect(shell).not.toContain("<aside");
   });
 });
