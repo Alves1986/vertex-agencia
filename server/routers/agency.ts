@@ -3,6 +3,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import {
   completeAiGeneration,
   createAdCampaign,
+  createApprovalHistoryReportRecipient,
   createAiGeneration,
   createCarouselBriefTemplate,
   createClientBrandAssetCollection,
@@ -28,6 +29,8 @@ import {
   listClientCredentialStatuses,
   listClientApiUsage,
   listCampaignApprovalHistory,
+  listApprovalHistoryEmailFailures,
+  listApprovalHistoryReportRecipients,
   recordApprovalHistoryEmailDelivery,
   recordClientAiConnectionTest,
   listCreativeApprovals,
@@ -37,9 +40,11 @@ import {
   listVideoScripts,
   replaceCarouselSlides,
   deleteCarouselBriefTemplate,
+  deleteApprovalHistoryReportRecipient,
   deleteClientBrandAssetCollection,
   approveCarouselSlidesBatch,
   setClientAiConnectionStatus,
+  setApprovalHistoryReportRecipientStatus,
   setClientBrandAssetCollection,
   setClientBrandAssetStatus,
   updateAdCampaignStatus,
@@ -63,6 +68,9 @@ const profileSchema = z.object({ clientId: z.number().int().positive(), position
 const carouselSlideSchema = z.object({ slideNumber: z.number().int().min(1).max(10), role: z.enum(["cover", "context", "insight", "proof", "solution", "cta"]), headline: z.string().trim().min(1).max(500), body: z.string().max(2000).optional().nullable(), visualDirection: z.string().max(2000).optional().nullable(), imagePrompt: z.string().max(2000).optional().nullable() });
 const carouselFieldsSchema = z.object({ keyMessage: z.string().max(4000).optional(), audience: z.string().max(2000).optional(), slideCount: z.string().max(4).optional(), format: z.string().max(240).optional(), visualDirection: z.string().max(4000).optional(), callToAction: z.string().max(1200).optional(), assetIds: z.array(z.number().int().positive()).max(20).optional() });
 const approvalHistoryFilterSchema = z.object({ campaignId: z.number().int().positive(), reviewerUserId: z.number().int().positive().optional(), decision: z.enum(["approved", "changes_requested", "rejected"]).optional(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).superRefine((value, ctx) => {
+  if (value.startDate && value.endDate && value.startDate > value.endDate) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A data inicial não pode ser posterior à data final.", path: ["endDate"] });
+});
+const approvalHistoryEmailSchema = z.object({ campaignId: z.number().int().positive(), reviewerUserId: z.number().int().positive().optional(), decision: z.enum(["approved", "changes_requested", "rejected"]).optional(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), recipientIds: z.array(z.number().int().positive()).max(5).optional() }).superRefine((value, ctx) => {
   if (value.startDate && value.endDate && value.startDate > value.endDate) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A data inicial não pode ser posterior à data final.", path: ["endDate"] });
 });
 
@@ -292,24 +300,60 @@ export const agencyRouter = router({
     return { campaignName: campaign.campaign.name, clientName: campaign.client.name, contactName: campaign.client.contactName, contactEmail: campaign.client.contactEmail };
   }),
 
-  sendApprovalHistoryReport: protectedProcedure.input(approvalHistoryFilterSchema).mutation(async ({ ctx, input }) => {
+  approvalHistoryRecipients: protectedProcedure.input(z.object({ campaignId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    const campaign = await getAdCampaign(userId, input.campaignId);
+    if (!campaign) throw new Error("Campanha não encontrada neste espaço de trabalho");
+    const additional = await listApprovalHistoryReportRecipients(userId, campaign.client.id);
+    return { clientId: campaign.client.id, primary: { name: campaign.client.contactName || campaign.client.name, email: campaign.client.contactEmail || null, isPrimary: true as const }, additional };
+  }),
+
+  createApprovalHistoryRecipient: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), name: z.string().trim().min(2).max(180), email: z.string().trim().email().max(320) })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await createApprovalHistoryReportRecipient(userId, input) };
+  }),
+
+  setApprovalHistoryRecipientStatus: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), recipientId: z.number().int().positive(), status: z.enum(["active", "disabled"]) })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await setApprovalHistoryReportRecipientStatus(userId, input) };
+  }),
+
+  deleteApprovalHistoryRecipient: protectedProcedure.input(z.object({ clientId: z.number().int().positive(), recipientId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    return { id: await deleteApprovalHistoryReportRecipient(userId, input) };
+  }),
+
+  approvalHistoryEmailFailures: protectedProcedure.input(z.object({ campaignId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+    const userId = await getOperationalUserId(ctx.user);
+    const failures = await listApprovalHistoryEmailFailures(userId, input.campaignId);
+    return failures.map(failure => ({ ...failure, message: "O provedor não confirmou a entrega. Verifique o remetente e os destinatários autorizados antes de tentar novamente." }));
+  }),
+
+  sendApprovalHistoryReport: protectedProcedure.input(approvalHistoryEmailSchema).mutation(async ({ ctx, input }) => {
     const userId = await getOperationalUserId(ctx.user);
     const campaign = await getAdCampaign(userId, input.campaignId);
     if (!campaign) throw new Error("Campanha não encontrada neste espaço de trabalho");
     const recipientEmail = campaign.client.contactEmail?.trim();
     if (!recipientEmail || !recipientEmail.includes("@")) throw new Error("Cadastre um e-mail válido no cliente antes de enviar o relatório.");
+    const activeRecipients = await listApprovalHistoryReportRecipients(userId, campaign.client.id, false);
+    const authorizedById = new Map(activeRecipients.map(recipient => [recipient.id, recipient]));
+    const requestedRecipientIds = Array.from(new Set(input.recipientIds || []));
+    const selectedAdditional = requestedRecipientIds.map(id => authorizedById.get(id)).filter(Boolean) as Array<{ email: string }>;
+    if (requestedRecipientIds.length !== selectedAdditional.length) throw new Error("Um ou mais destinatários selecionados não estão autorizados para este cliente.");
+    const recipientEmails = Array.from(new Set([recipientEmail, ...selectedAdditional.map(recipient => recipient.email)].map(email => email.trim().toLowerCase())));
+    const auditRecipient = recipientEmails.join(", ").length <= 320 ? recipientEmails.join(", ") : `${recipientEmail} + ${recipientEmails.length - 1} destinatário(s) autorizado(s)`;
     const entries = (await listCampaignApprovalHistory(userId, input.campaignId, { reviewerUserId: input.reviewerUserId, decision: input.decision, startDate: input.startDate, endDate: input.endDate })).slice(0, 500);
     const reviewerName = input.reviewerUserId ? entries.find(entry => entry.reviewerUserId === input.reviewerUserId)?.reviewerName ?? null : null;
     const report = await createApprovalHistoryExport({ format: "pdf", campaignId: input.campaignId, campaignName: campaign.campaign.name, entries, filters: { reviewerName, decision: input.decision, startDate: input.startDate, endDate: input.endDate } });
     const decisionLabel = input.decision === "approved" ? "Aprovada" : input.decision === "rejected" ? "Rejeitada" : input.decision === "changes_requested" ? "Ajustes solicitados" : "Todas as decisões";
     const criteria = [reviewerName ? `Responsável: ${reviewerName}` : "Responsável: todos", `Decisão: ${decisionLabel}`, input.startDate ? `De: ${input.startDate}` : null, input.endDate ? `Até: ${input.endDate}` : null].filter(Boolean).join(" · ");
     try {
-      const sent = await sendApprovalHistoryReportEmail({ clientName: campaign.client.name, contactName: campaign.client.contactName, campaignName: campaign.campaign.name, recipientEmail, report, criteria });
-      await recordApprovalHistoryEmailDelivery(userId, { campaignId: input.campaignId, recipientEmail, subject: sent.subject, filtersJson: JSON.stringify({ reviewerUserId: input.reviewerUserId || null, decision: input.decision || null, startDate: input.startDate || null, endDate: input.endDate || null }), recordCount: report.recordCount, status: "sent", providerMessageId: sent.messageId });
-      return { recipientEmail, recordCount: report.recordCount, sentAt: new Date() };
+      const sent = await sendApprovalHistoryReportEmail({ clientName: campaign.client.name, contactName: campaign.client.contactName, campaignName: campaign.campaign.name, recipientEmails, report, criteria });
+      await recordApprovalHistoryEmailDelivery(userId, { campaignId: input.campaignId, recipientEmail: auditRecipient, subject: sent.subject, filtersJson: JSON.stringify({ reviewerUserId: input.reviewerUserId || null, decision: input.decision || null, startDate: input.startDate || null, endDate: input.endDate || null, recipientIds: requestedRecipientIds }), recordCount: report.recordCount, status: "sent", providerMessageId: sent.messageId });
+      return { recipientEmail, recipientEmails, recordCount: report.recordCount, sentAt: new Date() };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível enviar o relatório.";
-      await recordApprovalHistoryEmailDelivery(userId, { campaignId: input.campaignId, recipientEmail, subject: `Relatório de aprovações — ${campaign.campaign.name}`, filtersJson: JSON.stringify({ reviewerUserId: input.reviewerUserId || null, decision: input.decision || null, startDate: input.startDate || null, endDate: input.endDate || null }), recordCount: report.recordCount, status: "failed", failureCode: message.slice(0, 120) }).catch(() => undefined);
+      await recordApprovalHistoryEmailDelivery(userId, { campaignId: input.campaignId, recipientEmail: auditRecipient, subject: `Relatório de aprovações — ${campaign.campaign.name}`, filtersJson: JSON.stringify({ reviewerUserId: input.reviewerUserId || null, decision: input.decision || null, startDate: input.startDate || null, endDate: input.endDate || null, recipientIds: requestedRecipientIds }), recordCount: report.recordCount, status: "failed", failureCode: message.slice(0, 120) }).catch(() => undefined);
       throw new Error(message);
     }
   }),

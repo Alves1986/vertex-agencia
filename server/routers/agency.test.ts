@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
 
 const mocks = vi.hoisted(() => ({
-  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listClientApiUsage: vi.fn(), listCreativeApprovals: vi.fn(), listCampaignApprovalHistory: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), recordApprovalHistoryEmailDelivery: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), updateClientMonthlyApiCallLimit: vi.fn(), upsertClientAgencyProfile: vi.fn(), listCarouselBriefTemplates: vi.fn(), createCarouselBriefTemplate: vi.fn(), deleteCarouselBriefTemplate: vi.fn(), listClientBrandAssets: vi.fn(), createClientBrandAsset: vi.fn(), setClientBrandAssetStatus: vi.fn(), listClientBrandAssetCollections: vi.fn(), createClientBrandAssetCollection: vi.fn(), updateClientBrandAssetCollection: vi.fn(), deleteClientBrandAssetCollection: vi.fn(), setClientBrandAssetCollection: vi.fn(), listCarouselSlides: vi.fn(), approveCarouselSlidesBatch: vi.fn(), createApprovalHistoryExport: vi.fn(), sendApprovalHistoryReportEmail: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(), storagePut: vi.fn(),
+  completeAiGeneration: vi.fn(), createAdCampaign: vi.fn(), createAiGeneration: vi.fn(), createCreativeApproval: vi.fn(), createCreativeVersion: vi.fn(), createClientAiConnection: vi.fn(), createContentBrief: vi.fn(), createStrategyDecision: vi.fn(), createTrendSignal: vi.fn(), createVideoScript: vi.fn(), getAdCampaign: vi.fn(), getClientAgencyProfile: vi.fn(), getClientAiConnection: vi.fn(), getClientAiConnectionSecret: vi.fn(), listAdCampaigns: vi.fn(), listAgencyBriefs: vi.fn(), listClientAiConnections: vi.fn(), listClientCredentialStatuses: vi.fn(), listClientApiUsage: vi.fn(), listCreativeApprovals: vi.fn(), listCampaignApprovalHistory: vi.fn(), listCreativeVersions: vi.fn(), listStrategyDecisions: vi.fn(), listTrendSignals: vi.fn(), listVideoScripts: vi.fn(), recordClientAiConnectionTest: vi.fn(), recordApprovalHistoryEmailDelivery: vi.fn(), replaceCarouselSlides: vi.fn(), setClientAiConnectionStatus: vi.fn(), updateAdCampaignStatus: vi.fn(), updateAdCampaignProvider: vi.fn(), updateClientAiConnection: vi.fn(), updateClientMonthlyApiCallLimit: vi.fn(), upsertClientAgencyProfile: vi.fn(), listCarouselBriefTemplates: vi.fn(), createCarouselBriefTemplate: vi.fn(), deleteCarouselBriefTemplate: vi.fn(), listClientBrandAssets: vi.fn(), createClientBrandAsset: vi.fn(), setClientBrandAssetStatus: vi.fn(), listClientBrandAssetCollections: vi.fn(), createClientBrandAssetCollection: vi.fn(), updateClientBrandAssetCollection: vi.fn(), deleteClientBrandAssetCollection: vi.fn(), setClientBrandAssetCollection: vi.fn(), listCarouselSlides: vi.fn(), approveCarouselSlidesBatch: vi.fn(), createApprovalHistoryExport: vi.fn(), sendApprovalHistoryReportEmail: vi.fn(), listApprovalHistoryReportRecipients: vi.fn(), createApprovalHistoryReportRecipient: vi.fn(), setApprovalHistoryReportRecipientStatus: vi.fn(), deleteApprovalHistoryReportRecipient: vi.fn(), listApprovalHistoryEmailFailures: vi.fn(), getOperationalUserId: vi.fn(), buildAgencyPrompt: vi.fn(), generateAgencyOutput: vi.fn(), testAgencyConnection: vi.fn(), issueConnectionVerification: vi.fn(), verifyConnectionVerification: vi.fn(), storagePut: vi.fn(),
 }));
 
 vi.mock("../db", () => mocks);
@@ -46,17 +46,31 @@ describe("agency generation review contracts", () => {
     expect(mocks.createApprovalHistoryExport).toHaveBeenCalledWith(expect.objectContaining({ campaignId: 44, campaignName: "Carrossel de acabamentos", format: "csv", entries, filters: expect.objectContaining({ decision: "approved" }) }));
   });
 
-  it("envia o PDF somente ao contato cadastrado da campanha e audita a tentativa", async () => {
+  it("envia o PDF ao contato principal e somente aos adicionais autorizados selecionados", async () => {
     mocks.getOperationalUserId.mockResolvedValue(7);
     mocks.getAdCampaign.mockResolvedValue({ campaign: { id: 44, name: "Carrossel de acabamentos" }, client: { id: 3, name: "Globo Acabamentos", contactName: "Contato Globo", contactEmail: "contato@globoacabamentos.com.br" } });
     mocks.listCampaignApprovalHistory.mockResolvedValue([{ id: 18, creativeVersionId: 12, reviewerUserId: 7, reviewerName: "Anderson Alves", decision: "approved", note: "Narrativa revisada", source: "carousel_batch", slideNumbers: [1, 2, 3], createdAt: new Date("2026-08-21T12:00:00.000Z") }]);
     mocks.createApprovalHistoryExport.mockResolvedValue({ fileName: "historico.pdf", mimeType: "application/pdf", contentBase64: "cGRm", recordCount: 1 });
     mocks.sendApprovalHistoryReportEmail.mockResolvedValue({ messageId: "re_msg_1", subject: "Relatório de aprovações — Carrossel de acabamentos" });
+    mocks.listApprovalHistoryReportRecipients.mockResolvedValue([{ id: 21, email: "financeiro@globoacabamentos.com.br", status: "active" }]);
     const caller = agencyRouter.createCaller(createContext());
 
-    await expect(caller.sendApprovalHistoryReport({ campaignId: 44, decision: "approved" })).resolves.toMatchObject({ recipientEmail: "contato@globoacabamentos.com.br", recordCount: 1 });
-    expect(mocks.sendApprovalHistoryReportEmail).toHaveBeenCalledWith(expect.objectContaining({ recipientEmail: "contato@globoacabamentos.com.br", report: expect.objectContaining({ fileName: "historico.pdf" }) }));
+    await expect(caller.sendApprovalHistoryReport({ campaignId: 44, decision: "approved", recipientIds: [21] })).resolves.toMatchObject({ recipientEmail: "contato@globoacabamentos.com.br", recipientEmails: ["contato@globoacabamentos.com.br", "financeiro@globoacabamentos.com.br"], recordCount: 1 });
+    expect(mocks.sendApprovalHistoryReportEmail).toHaveBeenCalledWith(expect.objectContaining({ recipientEmails: ["contato@globoacabamentos.com.br", "financeiro@globoacabamentos.com.br"], report: expect.objectContaining({ fileName: "historico.pdf" }) }));
     expect(mocks.recordApprovalHistoryEmailDelivery).toHaveBeenCalledWith(7, expect.objectContaining({ campaignId: 44, status: "sent", providerMessageId: "re_msg_1" }));
+  });
+
+  it("lista destinatários, falhas seguras e bloqueia adicionais não autorizados", async () => {
+    mocks.getOperationalUserId.mockResolvedValue(7);
+    mocks.getAdCampaign.mockResolvedValue({ campaign: { id: 44, name: "Carrossel de acabamentos" }, client: { id: 3, name: "Globo Acabamentos", contactName: "Contato Globo", contactEmail: "contato@globoacabamentos.com.br" } });
+    mocks.listApprovalHistoryReportRecipients.mockResolvedValue([{ id: 21, name: "Financeiro", email: "financeiro@globoacabamentos.com.br", status: "active" }]);
+    mocks.listApprovalHistoryEmailFailures.mockResolvedValue([{ id: 9, recipientEmail: "contato@globoacabamentos.com.br", createdAt: new Date("2026-08-22T12:00:00.000Z"), failureCode: "provider_error" }]);
+    const caller = agencyRouter.createCaller(createContext());
+
+    await expect(caller.approvalHistoryRecipients({ campaignId: 44 })).resolves.toMatchObject({ clientId: 3, primary: { email: "contato@globoacabamentos.com.br" }, additional: [{ id: 21, status: "active" }] });
+    await expect(caller.approvalHistoryEmailFailures({ campaignId: 44 })).resolves.toMatchObject([{ id: 9, message: expect.stringContaining("provedor não confirmou") }]);
+    await expect(caller.sendApprovalHistoryReport({ campaignId: 44, recipientIds: [999] })).rejects.toThrow("não estão autorizados");
+    expect(mocks.listApprovalHistoryReportRecipients).toHaveBeenCalledWith(7, 3, false);
   });
 
   it("persiste uma versão revisável após uma geração integrada", async () => {

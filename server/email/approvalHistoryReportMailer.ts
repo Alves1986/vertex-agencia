@@ -4,7 +4,7 @@ type ApprovalReportMailInput = {
   clientName: string;
   contactName?: string | null;
   campaignName: string;
-  recipientEmail: string;
+  recipientEmails: string[];
   report: ApprovalHistoryExport;
   criteria: string;
 };
@@ -36,13 +36,13 @@ export async function sendApprovalHistoryReportEmail(input: ApprovalReportMailIn
   const from = process.env.REPORTS_FROM_EMAIL?.trim();
   if (!apiKey?.startsWith("re_")) throw new Error("A chave do provedor de e-mail não está configurada corretamente.");
   if (!from || !from.includes("@")) throw new Error("O remetente de relatórios não está configurado corretamente.");
-  if (!input.recipientEmail.includes("@")) throw new Error("O cliente não possui um e-mail de contato válido para receber o relatório.");
+  if (!input.recipientEmails.length || input.recipientEmails.some(email => !email.includes("@"))) throw new Error("Não há destinatários válidos para receber o relatório.");
 
   const template = createApprovalHistoryEmailTemplate({ clientName: input.clientName, contactName: input.contactName, campaignName: input.campaignName, criteria: input.criteria, reportCount: input.report.recordCount });
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [input.recipientEmail], subject: template.subject, html: template.html, attachments: [{ filename: input.report.fileName, content: input.report.contentBase64 }] }),
+    body: JSON.stringify({ from, to: input.recipientEmails, subject: template.subject, html: template.html, attachments: [{ filename: input.report.fileName, content: input.report.contentBase64 }] }),
   });
   const body = await response.json().catch(() => ({})) as { id?: string; message?: string };
   if (!response.ok || !body.id) throw new Error(body.message || "O provedor de e-mail não confirmou o envio do relatório.");

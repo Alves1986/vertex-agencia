@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalHistoryDecisionLabel, decodeApprovalHistoryExport } from "./ApprovalHistoryPanel";
+import { approvalHistoryDecisionLabel, decodeApprovalHistoryExport, selectAuthorizedRecipient } from "./ApprovalHistoryPanel";
 
 describe("histórico de aprovações", () => {
   it("traduz os estados auditáveis sem alterar a decisão persistida", () => {
@@ -18,5 +18,11 @@ describe("histórico de aprovações", () => {
     expect(approvalHistoryDecisionLabel("approved")).not.toBe(approvalHistoryDecisionLabel("rejected"));
     expect(approvalHistoryDecisionLabel("approved")).toBe("Aprovada");
     expect(approvalHistoryDecisionLabel("rejected")).toBe("Rejeitada");
+  });
+
+  it("seleciona apenas destinatários adicionais autorizados sem duplicar a escolha", () => {
+    expect(selectAuthorizedRecipient([], 12, true)).toEqual([12]);
+    expect(selectAuthorizedRecipient([12], 12, true)).toEqual([12]);
+    expect(selectAuthorizedRecipient([12, 18], 12, false)).toEqual([18]);
   });
 });

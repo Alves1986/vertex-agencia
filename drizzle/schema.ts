@@ -861,6 +861,25 @@ export const approvalHistoryEmailDeliveries = mysqlTable(
   table => [index("approval_history_email_campaign_created_idx").on(table.campaignId, table.createdAt), index("approval_history_email_client_created_idx").on(table.clientId, table.createdAt)],
 );
 
+/** Destinatários opcionais que podem receber relatórios de aprovação de um cliente. */
+export const approvalHistoryReportRecipients = mysqlTable(
+  "approval_history_report_recipients",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    email: varchar("email", { length: 320 }).notNull(),
+    status: mysqlEnum("status", ["active", "disabled"]).default("active").notNull(),
+    createdByUserId: int("createdByUserId").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("approval_history_report_recipient_client_email_unique").on(table.clientId, table.email),
+    index("approval_history_report_recipient_client_status_idx").on(table.clientId, table.status),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Client = typeof clients.$inferSelect;
@@ -894,3 +913,4 @@ export type SaasPlan = typeof saasPlans.$inferSelect;
 export type SaasSubscription = typeof saasSubscriptions.$inferSelect;
 export type WhatsappAuditLog = typeof whatsappAuditLogs.$inferSelect;
 export type ApprovalHistoryEmailDelivery = typeof approvalHistoryEmailDeliveries.$inferSelect;
+export type ApprovalHistoryReportRecipient = typeof approvalHistoryReportRecipients.$inferSelect;

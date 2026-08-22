@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import {
   adCampaigns,
   approvalHistoryEmailDeliveries,
+  approvalHistoryReportRecipients,
   aiGenerations,
   calendarEvents,
   carouselSlideApprovalBatches,
@@ -1569,6 +1570,41 @@ export async function recordApprovalHistoryEmailDelivery(userId: number, input: 
     failureCode: input.failureCode || null,
   }).$returningId();
   return created.id;
+}
+
+export async function listApprovalHistoryReportRecipients(userId: number, clientId: number, includeDisabled = true) {
+  const db = await requireOwnedAgencyClient(userId, clientId);
+  return db.select().from(approvalHistoryReportRecipients).where(includeDisabled ? eq(approvalHistoryReportRecipients.clientId, clientId) : and(eq(approvalHistoryReportRecipients.clientId, clientId), eq(approvalHistoryReportRecipients.status, "active"))).orderBy(asc(approvalHistoryReportRecipients.name));
+}
+
+export async function createApprovalHistoryReportRecipient(userId: number, input: { clientId: number; name: string; email: string }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const [created] = await db.insert(approvalHistoryReportRecipients).values({ clientId: input.clientId, name: input.name.trim(), email: input.email.trim().toLowerCase(), createdByUserId: userId, status: "active" }).$returningId();
+  return created.id;
+}
+
+export async function setApprovalHistoryReportRecipientStatus(userId: number, input: { clientId: number; recipientId: number; status: "active" | "disabled" }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const recipient = await db.select({ id: approvalHistoryReportRecipients.id }).from(approvalHistoryReportRecipients).where(and(eq(approvalHistoryReportRecipients.id, input.recipientId), eq(approvalHistoryReportRecipients.clientId, input.clientId))).limit(1);
+  if (!recipient[0]) throw new Error("Destinatário autorizado não encontrado para este cliente");
+  await db.update(approvalHistoryReportRecipients).set({ status: input.status }).where(eq(approvalHistoryReportRecipients.id, input.recipientId));
+  return input.recipientId;
+}
+
+export async function deleteApprovalHistoryReportRecipient(userId: number, input: { clientId: number; recipientId: number }) {
+  const db = await requireOwnedAgencyClient(userId, input.clientId);
+  const recipient = await db.select({ id: approvalHistoryReportRecipients.id }).from(approvalHistoryReportRecipients).where(and(eq(approvalHistoryReportRecipients.id, input.recipientId), eq(approvalHistoryReportRecipients.clientId, input.clientId))).limit(1);
+  if (!recipient[0]) throw new Error("Destinatário autorizado não encontrado para este cliente");
+  await db.delete(approvalHistoryReportRecipients).where(eq(approvalHistoryReportRecipients.id, input.recipientId));
+  return input.recipientId;
+}
+
+/** Retorna somente metadados seguros para alertas internos; o erro bruto não deixa o servidor. */
+export async function listApprovalHistoryEmailFailures(userId: number, campaignId: number) {
+  const db = await requireDb();
+  const campaign = await getAdCampaign(userId, campaignId);
+  if (!campaign) return [];
+  return db.select({ id: approvalHistoryEmailDeliveries.id, recipientEmail: approvalHistoryEmailDeliveries.recipientEmail, createdAt: approvalHistoryEmailDeliveries.createdAt, recordCount: approvalHistoryEmailDeliveries.recordCount }).from(approvalHistoryEmailDeliveries).where(and(eq(approvalHistoryEmailDeliveries.campaignId, campaignId), eq(approvalHistoryEmailDeliveries.status, "failed"))).orderBy(desc(approvalHistoryEmailDeliveries.createdAt)).limit(10);
 }
 
 export async function listCarouselSlides(userId: number, campaignId: number) {

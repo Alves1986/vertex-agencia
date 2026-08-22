@@ -2,7 +2,7 @@
 
 **Autoria:** Manus AI  
 **Produto:** VERTEX Consulting  
-**Atualização:** 21 de agosto de 2026
+**Atualização:** 22 de agosto de 2026
 
 ## Histórico por campanha
 
@@ -72,13 +72,29 @@ Na tela **Histórico de aprovações**, aplique os filtros de responsável, deci
 
 | Controle | Comportamento |
 |---|---|
-| Destinatário | É somente leitura e vem do e-mail de contato registrado no cliente da campanha |
+| Destinatário principal | É somente leitura e vem do e-mail de contato registrado no cliente da campanha |
+| Destinatários adicionais | Só podem ser selecionados após cadastro explícito como contatos autorizados e ativos do mesmo cliente |
 | PDF enviado | Reproduz exatamente os filtros ativos, com no máximo 500 eventos |
 | Modelo de mensagem | Apresenta a campanha, o recorte aplicado, a quantidade de decisões e a assinatura VERTEX Consulting |
 | Auditoria | Registra campanha, destinatário, filtros, volume, resultado e identificador do provedor; não guarda PDF, corpo da mensagem ou credenciais |
 | Confirmação | O envio externo só ocorre após o clique em **Confirmar envio** no diálogo de confirmação |
 
 O e-mail acompanha o PDF com a saudação ao contato cadastrado, um resumo dos critérios e a orientação para responder à equipe VERTEX Consulting caso seja necessário alinhar algum ponto. Nenhuma chave de IA é incluída no anexo ou na mensagem.
+
+## Alertas de falha e contatos autorizados
+
+Quando o provedor não confirma uma entrega, a área do histórico apresenta um **alerta visual** com a campanha, a data, os destinatários envolvidos e uma explicação segura. Mensagens brutas do provedor, conteúdo do relatório e credenciais permanecem fora da interface. A auditoria continua sendo a fonte dos alertas, portanto não existe duplicação de registros.
+
+Para adicionar uma cópia autorizada, abra a configuração de envio da campanha, informe nome e e-mail do contato e mantenha o registro ativo. O destinatário principal cadastrado no cliente sempre recebe o relatório e não pode ser removido nesse fluxo. Antes de confirmar o despacho, selecione somente os adicionais que devem receber aquela cópia.
+
+| Situação | Resultado |
+|---|---|
+| Contato adicional ativo e selecionado | Recebe o mesmo PDF filtrado junto ao contato principal |
+| Contato inativo | Permanece no cadastro, mas não pode ser selecionado para envio |
+| Contato removido | Deixa de aparecer na seleção; eventos anteriores continuam auditáveis |
+| Falha no provedor | Exibe alerta seguro e mantém a tentativa na auditoria para nova análise |
+
+> O envio é externo. Revise os destinatários apresentados no diálogo e confirme conscientemente antes de acionar o despacho.
 
 ## Validação desta evolução
 
@@ -88,5 +104,8 @@ Em 21 de agosto de 2026, a página Agência IA foi revisada nas larguras **1280 
 |---|---|
 | Filtro de decisão e exportações | Aplicados na fonte auditável e propagados para PDF, CSV e e-mail |
 | Modelo de e-mail e anexo | Testados com provedor simulado, sem disparar mensagem real |
-| Proteção de destinatário | Coberta pelo contrato: somente o contato do cliente da campanha é aceito |
-| Suíte e build | 131 testes aprovados em 29 arquivos; build de produção concluído |
+| Proteção de destinatário | Coberta pelo contrato: contato principal obrigatório e adicionais ativos, selecionados e pertencentes ao mesmo cliente |
+| Alerta e seleção de contato | Cobertos por contratos e teste de componente, sem e-mail externo na suíte |
+| Suíte e build | 133 testes aprovados em 29 arquivos; build de produção concluído |
+
+Em 22 de agosto de 2026, a revisão visual foi repetida em **1280 × 720** e **375 × 812**. A estrutura da Agência IA, os campos de contexto, o catálogo de serviços e a área de versões permaneceram legíveis e proporcionais. Não havia uma campanha persistida no conjunto de validação para materializar alertas e controles de destinatários nas capturas; esses estados foram validados por contratos e testes automatizados, mantendo a interface vazia sem dados artificiais.

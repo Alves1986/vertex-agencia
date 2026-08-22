@@ -206,3 +206,8 @@
 - [x] Registrar as tentativas de envio de relatório sem expor o conteúdo, dados de acesso ou outras informações de clientes.
 - [x] Cobrir filtro, navegação reorganizada e envio de relatório por e-mail com testes e documentação operacional.
 - [x] Criar um modelo profissional de e-mail para acompanhar o relatório PDF, com dados dinâmicos da campanha e do período filtrado.
+- [x] Modelar destinatários adicionais autorizados por cliente, com e-mail, nome, estado e isolamento por workspace.
+- [x] Criar contratos protegidos para listar, adicionar, ativar, desativar e remover destinatários adicionais sem acesso entre clientes.
+- [x] Permitir selecionar destinatários autorizados adicionais na confirmação de envio do relatório, mantendo o contato principal obrigatório e somente leitura.
+- [x] Exibir alertas visuais de falha de e-mail com campanha, data, destinatários e mensagem segura de erro, sem expor conteúdo ou segredos.
+- [x] Cobrir destinatários adicionais, alertas de falha, autorização e interface com testes e documentação operacional.
