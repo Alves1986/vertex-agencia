@@ -38,7 +38,7 @@ export default function Governance() {
   const recordHealth = trpc.governance.recordIntegrationHealth.useMutation({ onSuccess: async () => { await utils.governance.integrationHealth.invalidate(); toast.success("Status da integração registrado."); } });
 
   return (
-    <StudioShell eyebrow="Governança e indicadores" title="BI executivo & controles">
+    <StudioShell eyebrow="Gestão da plataforma" title="Governança & BI">
       <div className="governance-page">
         <section className="governance-hero">
           <div><span className="governance-kicker">Visão de gestão</span><h2>Decisões sustentadas por dados disponíveis.</h2><p>Receita, capacidade e performance são exibidas sem estimar indicadores que ainda não possuem base confiável.</p></div>

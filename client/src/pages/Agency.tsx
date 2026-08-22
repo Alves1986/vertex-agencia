@@ -453,7 +453,7 @@ export default function Agency() {
     }
   }
 
-  return <StudioShell eyebrow="Agência conectada" title="Criação com IA" actions={<button className="ops-primary-button" type="button" onClick={() => document.getElementById("agency-briefing")?.scrollIntoView({ behavior: "smooth" })}><WandSparkles size={17} /> Nova geração</button>}>
+  return <StudioShell eyebrow="03 · Conteúdo, IA e revisão" title="Criação & revisão" actions={<button className="ops-primary-button" type="button" onClick={() => document.getElementById("agency-briefing")?.scrollIntoView({ behavior: "smooth" })}><WandSparkles size={17} /> Nova geração</button>}>
     <div className="ops-content agency-content">
       <section className="agency-hero">
         <div><p className="ops-section-kicker">Orquestração por cliente</p><h2>Uma campanha, várias entregas, uma decisão humana.</h2><p>Conecte a marca, selecione um provedor e transforme o mesmo briefing em estratégia, anúncios, carrossel, vídeo e conselho de decisão.</p></div>

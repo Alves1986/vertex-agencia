@@ -17,6 +17,7 @@ import PublicApproval from "./pages/PublicApproval";
 import Commercial from "./pages/Commercial";
 import Intelligence from "./pages/Intelligence";
 import Governance from "./pages/Governance";
+import Management from "./pages/Management";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/comercial" component={Commercial} />
       <Route path="/inteligencia" component={Intelligence} />
       <Route path="/governanca" component={Governance} />
+      <Route path="/gestao" component={Management} />
       <Route path="/meu-atendimento" component={ClientPortal} />
       <Route path="/aprovar/:token" component={PublicApproval} />
       <Route path="/404" component={NotFound} />

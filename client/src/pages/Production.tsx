@@ -46,7 +46,7 @@ export default function Production() {
   function submitEvent(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); const startsAt = String(data.get("startsAt") ?? ""); if (!startsAt) return; createEvent.mutate({ title: String(data.get("title") ?? ""), projectId: String(data.get("projectId")) === "no-project" ? null : Number(data.get("projectId")), responsibleOperatorId: String(data.get("responsibleOperatorId")) === "no-operator" ? null : Number(data.get("responsibleOperatorId")), eventType: String(data.get("eventType")) as "meeting" | "review" | "delivery" | "focus" | "deadline", startsAt: new Date(startsAt) }); }
   function toggleFile(name: string) { setSelectedFiles(current => current.includes(name) ? current.filter(file => file !== name) : [...current, name]); }
 
-  return <StudioShell title="Produção" eyebrow="Régua de execução" actions={<NewProjectLink />}>
+  return <StudioShell title="Produção & calendário" eyebrow="05 · Execução e prazos" actions={<NewProjectLink />}>
     <div className="ops-content">
       <section className="ops-page-intro"><div><p className="ops-section-kicker">Fila de trabalho</p><h2>Transforme cada tarefa, revisão e entrega em um sinal inequívoco.</h2></div><div className="ops-button-group"><button type="button" className="ops-outline-button" onClick={() => setComposer("event")}><CalendarPlus size={17} /> Novo marco</button><button type="button" className="ops-primary-button" onClick={() => setComposer("task")}><Plus size={17} /> Nova tarefa</button></div></section>
       <section className="ops-production-board" aria-label="Quadro de produção">

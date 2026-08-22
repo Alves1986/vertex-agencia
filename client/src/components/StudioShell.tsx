@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
-import { BadgeDollarSign, Bell, ChevronDown, HeartPulse, LayoutDashboard, LifeBuoy, ListFilter, Loader2, MessageCircleMore, Plus, Search, ShieldCheck, SlidersHorizontal, SquareKanban, UsersRound, Workflow, WandSparkles } from "lucide-react";
+import { Bell, ListFilter, Loader2, Plus, SlidersHorizontal } from "lucide-react";
 import { getNotificationTarget } from "@/lib/notificationTarget";
+import { agencyFlow, managementEntry } from "@/lib/agencyFlow";
 import React, { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import "./studio-shell.css";
@@ -12,9 +13,8 @@ export function VertexBrand() {
 }
 
 export const navigationGroups = [
-  { label: "Visão", links: [{ href: "/", label: "Visão geral", icon: LayoutDashboard }] },
-  { label: "Operação", links: [{ href: "/projetos", label: "Projetos", icon: SquareKanban }, { href: "/producao", label: "Produção", icon: Workflow }] },
-  { label: "Inteligência e clientes", links: [{ href: "/agencia", label: "Agência IA", icon: WandSparkles }, { href: "/inteligencia", label: "Inteligência", icon: Search }, { href: "/atendimento", label: "Atendimento", icon: MessageCircleMore }, { href: "/comercial", label: "Comercial", icon: BadgeDollarSign }, { href: "/sucesso", label: "Sucesso", icon: HeartPulse }, { href: "/governanca", label: "Governança", icon: ShieldCheck }, { href: "/suporte", label: "Suporte", icon: LifeBuoy }] },
+  { label: "Fluxo da agência", links: agencyFlow },
+  { label: "Plataforma", links: [{ ...managementEntry, step: "" }] },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -107,7 +107,7 @@ export function StudioShell({ title, eyebrow, actions, children }: { title: stri
         <nav className="ops-top-tabs" aria-label="Navegação principal">
           {navigationGroups.map((group, groupIndex) => <React.Fragment key={group.label}>
             {groupIndex ? <span className="ops-top-tabs-divider" aria-hidden="true" /> : null}
-            {group.links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} title={`${group.label}: ${label}`} className={isActive(location, href) ? "ops-top-tab is-active" : "ops-top-tab"}><Icon size={16} /><span>{label}</span></Link>)}
+            {group.links.map(({ href, label, icon: Icon, step }) => <Link key={href} href={href} title={`${group.label}: ${label}`} className={isActive(location, href) ? "ops-top-tab is-active" : "ops-top-tab"}>{step ? <b className="ops-top-tab-step">{step}</b> : null}<Icon size={16} /><span>{label}</span></Link>)}
           </React.Fragment>)}
         </nav>
         {children}

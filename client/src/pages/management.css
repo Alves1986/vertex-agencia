@@ -1,0 +1,22 @@
+.management-page { display: grid; gap: 17px; }
+.management-hero { align-items: center; background: linear-gradient(125deg, #193d55, #245b68); border-radius: 16px; color: #eaf5f8; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) auto; overflow: hidden; padding: 31px 34px; position: relative; }
+.management-hero::after { border: 1px solid rgba(129, 209, 185, .32); border-radius: 50%; content: ""; height: 230px; position: absolute; right: -76px; top: -132px; width: 230px; }
+.management-hero > * { position: relative; z-index: 1; }
+.management-hero .ops-section-kicker { color: #8fd4bf; }
+.management-hero h2 { color: #fff; font-size: clamp(25px, 3vw, 37px); letter-spacing: -1.4px; line-height: 1.05; margin: 9px 0 12px; max-width: 700px; }
+.management-hero p:not(.ops-section-kicker) { color: #c2dce1; font-size: 13px; line-height: 1.6; margin: 0; max-width: 690px; }
+.management-hero > span { align-items: center; background: rgba(255, 255, 255, .1); border: 1px solid rgba(221, 246, 239, .25); border-radius: 16px; color: #a8e1ce; display: inline-flex; height: 62px; justify-content: center; width: 62px; }
+.management-principles { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.management-principles article { background: rgba(255, 255, 255, .72); border: 1px solid #dbe6ea; border-radius: 11px; display: grid; gap: 5px; padding: 14px 15px; }
+.management-principles b { color: #28556b; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.management-principles span { color: #64808e; font-size: 11px; line-height: 1.45; }
+.management-grid { display: grid; gap: 13px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.management-card { align-items: start; background: #fff; border: 1px solid #dbe6ea; border-radius: 12px; display: grid; gap: 11px; grid-template-columns: auto minmax(0, 1fr) auto; min-height: 146px; padding: 16px; transition: border-color .18s ease-out, box-shadow .18s ease-out, transform .18s ease-out; }
+.management-card:hover { border-color: #8bb6b8; box-shadow: 0 8px 18px rgba(33, 79, 91, .08); transform: translateY(-2px); }
+.management-card-icon { align-items: center; background: #e8f4f2; border-radius: 9px; color: #327a70; display: inline-flex; height: 34px; justify-content: center; width: 34px; }
+.management-card p { color: #678590; font-size: 9px; font-weight: 800; letter-spacing: .07em; margin: 1px 0 5px; text-transform: uppercase; }
+.management-card h3 { color: #24495e; font-size: 13px; line-height: 1.3; margin: 0 0 5px; }
+.management-card small { color: #6d8590; font-size: 10px; line-height: 1.45; }
+.management-card > svg { color: #d66643; margin-top: 2px; }
+@media (max-width: 860px) { .management-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .management-hero { align-items: start; grid-template-columns: 1fr; padding: 24px; }.management-hero > span { display: none; }.management-principles, .management-grid { grid-template-columns: 1fr; }.management-card { min-height: 0; } }

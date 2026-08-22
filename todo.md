@@ -253,3 +253,7 @@
 - [x] Cobrir NVIDIA e a seleção de modelos com testes, build e validação responsiva do card.
 - [x] Criar uma visualização simples dos presets NVIDIA com seleção direta no card do motor de IA.
 - [x] Validar em testes e responsividade a nova seleção visual de presets NVIDIA.
+- [x] Mapear os módulos atuais e consolidar um fluxo operacional claro para agência e SaaS multicliente.
+- [x] Refatorar a navegação superior e o dashboard inicial para uma jornada de agência compreensível.
+- [x] Reorganizar páginas e termos dos módulos com contexto, etapas e próximos passos claros.
+- [x] Cobrir a nova arquitetura SaaS com testes, validação responsiva e documentação de operação.

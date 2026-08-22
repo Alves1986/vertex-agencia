@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 vi.mock("wouter", () => ({
   Link: ({ children, ...props }: { children: unknown }) => createElement("a", props, children),
@@ -18,6 +19,18 @@ describe("filtro de credenciais do painel", () => {
 
     expect(filterCredentialStatuses(rows, "all")).toHaveLength(3);
     expect(filterCredentialStatuses(rows, "inactive")).toEqual([rows[1]]);
+  });
+});
+
+describe("painel da agência", () => {
+  it("apresenta a leitura executiva, a próxima ação e o mapa do fluxo sem remover o controle de IA", () => {
+    const source = readFileSync(new URL("./Home.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('title="Painel da agência"');
+    expect(source).toContain("Próxima ação");
+    expect(source).toContain("Fluxo da agência");
+    expect(source).toContain("Prontidão de IA por cliente");
+    expect(source).toContain('href="/gestao"');
   });
 });
 

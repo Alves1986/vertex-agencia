@@ -196,7 +196,7 @@ export default function WhatsApp() {
   const policyCopy = getAiModeCopy(aiMode);
   const activeConnections = (agency.data?.connections ?? []).filter(connection => connection.status === "active");
 
-  return <StudioShell eyebrow="SaaS multicliente" title="Atendimento WhatsApp" actions={<span className="wa-header-signal"><ShieldCheck size={15} /> Isolamento por cliente</span>}>
+  return <StudioShell eyebrow="06 · Conversas, canais e handoff" title="Atendimento & canais" actions={<span className="wa-header-signal"><ShieldCheck size={15} /> Isolamento por cliente</span>}>
     <section className="ops-page whatsapp-page">
       <div className="wa-intro">
         <div><p className="ops-eyebrow"><i /> OPERAÇÃO CONECTADA</p><h2>Atendimento com IA, sob o controle da agência.</h2><p>Conecte cada cliente pela API oficial da Meta ou por parceiro BSP, escolha a fonte de IA e preserve a revisão humana onde ela é necessária.</p></div>

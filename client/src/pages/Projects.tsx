@@ -49,7 +49,7 @@ export default function Projects() {
     createOperator.mutate({ name: String(data.get("name") ?? ""), role: String(data.get("role") ?? "") || null, email: String(data.get("email") ?? "") || null, teamId: String(data.get("teamId")) === "no-team" ? null : Number(data.get("teamId")) });
   }
 
-  return <StudioShell title="Projetos" eyebrow="Visão de ponta a ponta" actions={<><button className="ops-outline-button" type="button" onClick={() => setOperatorOpen(true)}><UserPlus size={17} /> Responsável</button><button className="ops-primary-button" type="button" onClick={() => setCreateOpen(true)}><Plus size={18} /> Novo projeto</button></>}>
+  return <StudioShell title="Projetos & entregas" eyebrow="04 · Escopo e responsáveis" actions={<><button className="ops-outline-button" type="button" onClick={() => setOperatorOpen(true)}><UserPlus size={17} /> Responsável</button><button className="ops-primary-button" type="button" onClick={() => setCreateOpen(true)}><Plus size={18} /> Novo projeto</button></>}>
     <div className="ops-content">
       <section className="ops-page-intro"><div><p className="ops-section-kicker">Carteira ativa</p><h2>Contexto, responsabilidade e próximo marco em uma mesma leitura.</h2></div><div className="ops-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar projeto" aria-label="Buscar projeto" /></div></section>
       {!clients.isLoading && !clients.data?.length ? <WorkspaceSetup onClient={name => createClient.mutate({ name })} onTeam={(name, color) => createTeam.mutate({ name, color })} /> : null}

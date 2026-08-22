@@ -1,1 +1,3 @@
 .ops-top-tabs { scroll-padding-inline: 15px; }
+.ops-top-tab-step { align-items: center; background: #e6eff2; border-radius: 999px; color: #5d7a89; display: inline-flex; font-size: 8px; height: 18px; justify-content: center; letter-spacing: .03em; min-width: 18px; }
+.ops-top-tab.is-active .ops-top-tab-step { background: #e8f5f0; color: #2d766a; }
