@@ -109,7 +109,7 @@ describe("modos da Agência IA", () => {
       provider: { label: "OpenAI do cliente", provider: "openai", model: "gpt-5", imageModel: "", baseUrl: "", apiKey: "" },
       setProvider: () => undefined,
       editing: true,
-      selectedProvider: { description: "Para texto, estratégia e ideação do cliente." },
+      selectedProvider: { value: "openai", label: "OpenAI", defaultModel: "gpt-5-mini", description: "Para texto, estratégia e ideação do cliente." },
       saving: false,
       testing: false,
       testState: "idle",
@@ -119,6 +119,10 @@ describe("modos da Agência IA", () => {
       onTest: () => undefined,
     }));
 
+    expect(html).toContain("Escolha o motor");
+    expect(html).toContain("Defina a configuração");
+    expect(html).toContain("Teste antes de proteger");
+    expect(html).toContain("Manus integrado");
     expect(html).toContain("Você alterou o provedor, URL ou modelo");
     expect(html).toContain("Nova chave de API");
     expect(html).toContain("A alteração exige uma nova chave e uma validação concluída.");

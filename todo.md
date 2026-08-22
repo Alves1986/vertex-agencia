@@ -239,3 +239,5 @@
 - [x] Adicionar governança empresarial, incluindo consentimento, retenção, auditoria, monitoramento de integrações e política de recuperação.
 - [x] Criar BI executivo multicliente com receita, MRR, churn, margem, CAC, LTV e resultado de mídia, sem inventar métricas ausentes.
 - [x] Cobrir os módulos comerciais e de inteligência com testes, validação visual responsiva e documentação operacional.
+- [x] Aprimorar o card de adição de motor de IA com etapas claras de provedor, modelo, chave, teste de conexão e salvamento seguro.
+- [x] Validar o card de motor de IA em desktop e celular, mantendo bloqueios de credencial e geração existentes.
