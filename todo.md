@@ -264,6 +264,6 @@
 - [x] Garantir remoção de registros e referências relacionadas na exclusão confirmada do cliente.
 - [x] Cobrir a exclusão integral com testes de ausência de vínculos remanescentes.
 
-- [ ] Criar e publicar o projeto validado no repositório privado do GitHub `vertex-agencia`.
-- [ ] Verificar branch principal, commit enviado e URL remota do repositório `vertex-agencia`.
-- [ ] Confirmar que nenhum segredo ou arquivo `.env` foi incluído na publicação.
+- [x] Criar e publicar o projeto validado no repositório privado do GitHub `vertex-agencia`.
+- [x] Verificar branch principal, commit enviado e URL remota do repositório `vertex-agencia`.
+- [x] Confirmar que nenhum segredo ou arquivo `.env` foi incluído na publicação.
