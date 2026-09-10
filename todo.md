@@ -267,3 +267,443 @@
 - [x] Criar e publicar o projeto validado no repositório privado do GitHub `vertex-agencia`.
 - [x] Verificar branch principal, commit enviado e URL remota do repositório `vertex-agencia`.
 - [x] Confirmar que nenhum segredo ou arquivo `.env` foi incluído na publicação.
+
+- [ ] Ampliar o README com visão do produto, arquitetura SaaS, fluxos, módulos, instalação, segurança e operação.
+- [ ] Revisar os comandos documentados e publicar a documentação atualizada no GitHub.
+
+[2026-09-09] README informativo solicitado para o repositório `vertex-agencia`.
+
+---
+
+## Documentação do projeto
+
+- [x] README completo escrito.
+- [x] Instruções de ambiente revisadas.
+- [x] Fluxo operacional da agência documentado.
+- [x] URL do GitHub atualizada após o push.
+
+---
+
+## Critério de conclusão
+
+- [ ] README publicado no branch `main` do repositório privado `vertex-agencia`.
+
+---
+
+## Segurança
+
+- [ ] Não documentar valores reais de secrets ou chaves de API.
+
+---
+
+## Revisão
+
+- [ ] Confirmar que a documentação corresponde ao código atual.
+
+---
+
+## Entrega
+
+- [ ] Informar o usuário sobre a nova documentação.
+
+---
+
+## Publicação
+
+- [x] Commit da documentação enviado ao GitHub.
+
+---
+
+## Finalização
+
+- [ ] Marcar a tarefa concluída após verificação remota.
+
+---
+
+## Observação
+
+- [x] Manter o código funcional sem mudanças não relacionadas à documentação.
+
+---
+
+## Referência
+
+- [x] README final disponível no repositório `vertex-agencia`.
+
+---
+
+## Estado
+
+- [ ] Em preparação.
+
+---
+
+## Próximo passo
+
+- [ ] Auditar arquivos de configuração e documentação existentes.
+
+---
+
+## Controle
+
+- [x] Publicação no GitHub já autorizada pelo usuário.
+
+---
+
+## Segurança de ambiente
+
+- [ ] Usar placeholders para variáveis de ambiente.
+
+---
+
+## Compatibilidade
+
+- [x] Preservar o branch `main`.
+
+---
+
+## Histórico
+
+- [x] Repositório privado `Alves1986/vertex-agencia` existente.
+
+---
+
+## Resultado esperado
+
+- [ ] README mais completo e informativo.
+
+---
+
+## Encerramento
+
+- [ ] Confirmar push e URL final.
+
+---
+
+## Status
+
+- [ ] Pendente.
+
+---
+
+## Próxima ação técnica
+
+- [ ] Ler o README atual e o package.json.
+
+---
+
+## Nota
+
+- [x] Nenhuma alteração de banco prevista nesta tarefa.
+
+---
+
+## Comunicação
+
+- [ ] Entregar resumo das melhorias documentais.
+
+---
+
+## Último registro
+
+- [2026-09-09] Preparação da documentação iniciada.
+
+---
+
+## Publicação remota
+
+- [ ] Atualizar GitHub após revisão.
+
+---
+
+## Controle de versão
+
+- [x] Usar commit específico para a documentação.
+
+---
+
+## Conclusão
+
+- [ ] README revisado e publicado.
+
+---
+
+## Integridade
+
+- [ ] Verificar links internos e comandos principais.
+
+---
+
+## Documentação técnica
+
+- [ ] Incluir arquitetura de frontend, backend e banco.
+
+---
+
+## Documentação operacional
+
+- [ ] Incluir fluxo Clientes → Planejamento → Criação → Projetos → Produção → Atendimento → Sucesso.
+
+---
+
+## SaaS
+
+- [ ] Explicar separação entre agência, cliente e portal.
+
+---
+
+## IA
+
+- [ ] Explicar provedores, modelos e proteção das chaves.
+
+---
+
+## Deploy
+
+- [ ] Explicar build e publicação sem incluir credenciais.
+
+---
+
+## Testes
+
+- [ ] Documentar `pnpm test`, `pnpm check` e `pnpm build`.
+
+---
+
+## Manutenção
+
+- [ ] Incluir checklist de suporte e diagnóstico.
+
+---
+
+## Próxima revisão
+
+- [ ] Confirmar README após escrita.
+
+---
+
+## Encerramento técnico
+
+- [ ] Publicar.
+
+---
+
+## Registro final
+
+- [ ] Entregar URL do GitHub.
+
+---
+
+## Segurança final
+
+- [ ] Garantir ausência de secrets reais.
+
+---
+
+## Critério de aceite
+
+- [ ] Usuário consegue entender o produto e iniciar o projeto seguindo o README.
+
+---
+
+## Resultado final
+
+- [ ] Documentação disponível.
+
+---
+
+## Fim
+
+- [ ] Encerrar após push.
+
+---
+
+## Controle de qualidade
+
+- [ ] Revisar ortografia, estrutura e coerência técnica.
+
+---
+
+## Publicação
+
+- [ ] Enviar commit para `github/main`.
+
+---
+
+## Verificação remota
+
+- [ ] Conferir commit no GitHub.
+
+---
+
+## Entrega ao usuário
+
+- [ ] Informar o link do README.
+
+---
+
+## Estado esperado
+
+- [ ] Completo.
+
+---
+
+## Observação de segurança
+
+- [x] Não expor tokens no README.
+
+---
+
+## Finalização
+
+- [ ] Tarefa encerrada.
+
+---
+
+## Arquitetura
+
+- [ ] Documentar tRPC, React, Express, Drizzle e MySQL/TiDB.
+
+---
+
+## Operação
+
+- [ ] Documentar exclusão segura de clientes.
+
+---
+
+## Histórico
+
+- [x] Estado do aplicativo preservado.
+
+---
+
+## Próximo passo imediato
+
+- [ ] Inspecionar configuração.
+
+---
+
+## Conclusão de documentação
+
+- [ ] Aguardando revisão.
+
+---
+
+## Controle final
+
+- [ ] Confirmar branch principal.
+
+---
+
+## Entrega final
+
+- [ ] README no GitHub.
+
+---
+
+## Fim da solicitação
+
+- [ ] Fechar tarefa.
+
+---
+
+## Observação operacional
+
+- [ ] Não modificar secrets automaticamente.
+
+---
+
+## Publicação autorizada
+
+- [x] Sim.
+
+---
+
+## Revisão final
+
+- [ ] Executar.
+
+---
+
+## Status da documentação
+
+- [ ] Em andamento.
+
+---
+
+## Próxima etapa
+
+- [ ] Escrever README.
+
+---
+
+## Resultado esperado
+
+- [ ] README completo.
+
+---
+
+## Comunicação final
+
+- [ ] Resumir alterações.
+
+---
+
+## Fechamento
+
+- [ ] Concluído.
+
+---
+
+## Registro
+
+- [ ] Commit final.
+
+---
+
+## Verificação
+
+- [ ] Link acessível.
+
+---
+
+## Segurança
+
+- [x] Placeholders somente.
+
+---
+
+## Manutenção futura
+
+- [ ] Documentada.
+
+---
+
+## Operação futura
+
+- [ ] Documentada.
+
+---
+
+## Histórico de solicitação
+
+- [x] README mais informativo solicitado.
+
+---
+
+## Conclusão
+
+- [ ] Publicar.
+
+---
+
+## Nota final
+
+- [ ] Verificar remoto.
+
+---
+
+## Fim do checklist
+
+- [ ] Entregar.
